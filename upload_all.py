@@ -5,6 +5,7 @@ import sys
 import re
 import time
 import json
+from threading import Thread
 from rucio.client.uploadclient import UploadClient
 from rucio.client.didclient import DIDClient
 from rucio.client.ruleclient import RuleClient
@@ -17,11 +18,10 @@ RULECLIENT = RuleClient()
 
 #scope="user.icaruspro"
 #dirname_run_file="/icarus/app/home/icaruspro/rucio-op/run_to_transfer_102021/run_files/posix"
-pattern=r"run_([0-9]{4})_filelist.local.dat"
 #timeout = 300
 #nbatch = 10
 
-log_file = None
+pattern=r"run_([0-9]{4})_filelist.local.dat"
 
 file_in_rucio = []
 
@@ -74,8 +74,7 @@ def get_file_to_attach_to_dataset(filename, scope):
 def get_now():
   return "{}".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-def upload_files(list_of_files):
-  global log_file
+def upload_files(list_of_files, log_file):
   log_file.write(" Start Upload = {}\n".format(get_now()))
   imin = 0
   imax = min(config["nbatch"],len(list_of_files))
@@ -100,8 +99,7 @@ def upload_files(list_of_files):
         time.sleep(config["timeout"])
   log_file.write(" Finish Upload = {}\n".format(get_now()))
 
-def attach_files(list_of_files, dataset_scope, dataset_name):
-  global log_file
+def attach_files(list_of_files, dataset_scope, dataset_name, log_file):
   ok = False
   while ok == False:
     try:
@@ -113,8 +111,7 @@ def attach_files(list_of_files, dataset_scope, dataset_name):
       time.sleep(config["timeout"])
   
 
-def loop_missing_files(list_files, list_dataset, scope, dataset_name, dataset_scope):
-  global log_file
+def loop_missing_files(list_files, list_dataset, scope, dataset_name, dataset_scope, log_file):
   file_to_upload = []
   file_to_attach = []
   for filepath in list_files:
@@ -130,9 +127,9 @@ def loop_missing_files(list_files, list_dataset, scope, dataset_name, dataset_sc
         #log_file.write("file: {} is NOT in RUCIO\n".format(filename))
         file_to_upload.append(get_file_to_upload(filepath, filename, scope, dataset_scope, dataset_name))
   if len(file_to_upload) > 0:
-    upload_files(file_to_upload)
+    upload_files(file_to_upload, log_file)
   if len(file_to_attach) > 0:
-    attach_files(file_to_attach, dataset_scope, dataset_name)
+    attach_files(file_to_attach, dataset_scope, dataset_name, log_file)
 
 def list_of_files_in_dataset(scope,name):
   while True:
@@ -143,8 +140,7 @@ def list_of_files_in_dataset(scope,name):
     except Exception:
       time.sleep(config["timeout"])
 
-def list_of_files_in_run(run):
-  global log_file
+def list_of_files_in_run(run, log_file):
   path_run_file=os.path.join(config["run_file_dir"],"run_{:04d}_filelist.local.dat".format(run))
 
   if not os.path.exists(path_run_file):
@@ -163,7 +159,6 @@ def help():
   exit(1)
 
 def upload_run(run):
-  global log_file
   log_file = open("log-{:04d}.txt".format(run),"a",0)
   log_file.write(" Start Time = {}\n".format(get_now()))
 
@@ -204,16 +199,20 @@ def upload_run(run):
       time.sleep(config["timeout"])
 
 
-  files_in_run = list_of_files_in_run(run)
+  files_in_run = list_of_files_in_run(run, log_file)
   files_in_dataset = list_of_files_in_dataset(dataset_scope, dataset_name)
 
   log_file.write("{:6d} files in run\n".format(len(files_in_run)))
   log_file.write("{:6d} files in dataset\n".format(len(files_in_dataset)))
 
-  loop_missing_files(files_in_run, files_in_dataset, did_scope, dataset_name, dataset_scope)
+  loop_missing_files(files_in_run, files_in_dataset, did_scope, dataset_name, dataset_scope, log_file)
 
   log_file.write(" Finish Time = {}\n".format(get_now()))
   log_file.close()
+
+def upload_runs(run_list):
+  for r in run_list:
+    upload_run(int(r))
 
 if __name__ == '__main__':
 
@@ -223,6 +222,17 @@ if __name__ == '__main__':
   
   file_in_rucio = get_file_in_rucio()
 
-  for r in runs:
-    if int(r) > 6857:
-      upload_run(int(r))
+  imin = 0
+  imax = min(imin + 10,len(runs))
+
+  while(True):
+    if imin >= len(runs):
+      break
+    if imax > len(runs):
+      imax = len(runs)
+    run_list = runs[imin:imax]
+    t = Thread(target = upload_runs, args = ([run_list]))
+    t.start()
+    imin += 10
+    imax += 10
+
