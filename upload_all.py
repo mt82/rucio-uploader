@@ -4,6 +4,7 @@ import os
 import sys
 import re
 import time
+import json
 from rucio.client.uploadclient import UploadClient
 from rucio.client.didclient import DIDClient
 from rucio.client.ruleclient import RuleClient
@@ -14,19 +15,22 @@ DIDCLIENT = DIDClient()
 UPCLIENT = UploadClient()
 RULECLIENT = RuleClient()
 
-scope="user.icaruspro"
-
-dirname_run_file="/icarus/app/home/icaruspro/rucio-op/run_to_transfer_102021/run_files/posix"
-
+#scope="user.icaruspro"
+#dirname_run_file="/icarus/app/home/icaruspro/rucio-op/run_to_transfer_102021/run_files/posix"
 pattern=r"run_([0-9]{4})_filelist.local.dat"
+#timeout = 300
+#nbatch = 10
 
 log_file = None
 
-timeout = 300
-
 file_in_rucio = []
 
-nbatch = 10
+config = {}
+
+def read_config():
+  global config
+  with open('config.json') as f:
+    config = json.load(f)
 
 def get_did(name, scope):
   return "{}:{}".format(scope,name)
@@ -38,7 +42,7 @@ def file_exists_in_fs(filepath):
   return os.path.isfile(filepath)
 
 def get_file_in_rucio():
-  return list(DIDCLIENT.list_dids(scope,{},type="file"))
+  return list(DIDCLIENT.list_dids(config["scope"],{},type="file"))
 
 def file_exists_in_rucio(name):
   global file_in_rucio
@@ -74,9 +78,9 @@ def upload_files(list_of_files):
   global log_file
   log_file.write(" Start Upload = {}\n".format(get_now()))
   imin = 0
-  imax = min(nbatch,len(list_of_files))
+  imax = min(config["nbatch"],len(list_of_files))
   while(True):
-    if imin > len(list_of_files):
+    if imin >= len(list_of_files):
       break
     if imax > len(list_of_files):
       imax = len(list_of_files)
@@ -90,10 +94,10 @@ def upload_files(list_of_files):
         for item in items:
           log_file.write(" Uploading: {} finish {}\n".format(item["did_name"], get_now()))
         ok = True
-        imin += nbatch
-        imax += nbatch
+        imin += config["nbatch"]
+        imax += config["nbatch"]
       except exception.ServerConnectionException:
-        time.sleep(timeout)
+        time.sleep(config["timeout"])
   log_file.write(" Finish Upload = {}\n".format(get_now()))
 
 def attach_files(list_of_files, dataset_scope, dataset_name):
@@ -106,7 +110,7 @@ def attach_files(list_of_files, dataset_scope, dataset_name):
       log_file.write(" Finish Attach = {}\n".format(get_now()))
       ok = True
     except Exception:
-      time.sleep(timeout)
+      time.sleep(config["timeout"])
   
 
 def loop_missing_files(list_files, list_dataset, scope, dataset_name, dataset_scope):
@@ -137,11 +141,11 @@ def list_of_files_in_dataset(scope,name):
       files_in_dataset = [x["name"] for x in dataset_content]
       return files_in_dataset
     except Exception:
-      time.sleep(timeout)
+      time.sleep(config["timeout"])
 
 def list_of_files_in_run(run):
   global log_file
-  path_run_file=os.path.join(dirname_run_file,"run_{:04d}_filelist.local.dat".format(run))
+  path_run_file=os.path.join(config["run_file_dir"],"run_{:04d}_filelist.local.dat".format(run))
 
   if not os.path.exists(path_run_file):
     log_file.write("  {} doesn't exists\n".format(path_run_file))
@@ -163,8 +167,8 @@ def upload_run(run):
   log_file = open("log-{:04d}.txt".format(run),"a",0)
   log_file.write(" Start Time = {}\n".format(get_now()))
 
-  did_scope = scope
-  dataset_scope = scope
+  did_scope = config["scope"]
+  dataset_scope = config["scope"]
   dataset_name = get_dataset_name(run)
   dataset_did = get_did(dataset_name, dataset_scope)
   rse = "INFN_CNAF_DISK_TEST"
@@ -185,7 +189,7 @@ def upload_run(run):
       log_file.write(" dataset       : {} already exists\n".format(dataset_did))
       ok = True
     except exception.ServerConnectionException:
-      time.sleep(timeout)
+      time.sleep(config["timeout"])
 
   ok = False
   while ok == False:
@@ -197,7 +201,7 @@ def upload_run(run):
       log_file.write(" rule to       : {} already exists\n".format(rse))
       ok = True
     except exception.ServerConnectionException:
-      time.sleep(timeout)
+      time.sleep(config["timeout"])
 
 
   files_in_run = list_of_files_in_run(run)
@@ -213,7 +217,9 @@ def upload_run(run):
 
 if __name__ == '__main__':
 
-  runs = [re.match(pattern, f).group(1) for f in os.listdir(dirname_run_file) if re.match(pattern, f)]
+  read_config()
+
+  runs = [re.match(pattern, f).group(1) for f in os.listdir(config["run_file_dir"]) if re.match(pattern, f)]
   
   file_in_rucio = get_file_in_rucio()
 
