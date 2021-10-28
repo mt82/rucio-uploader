@@ -20,8 +20,7 @@ RULECLIENT = RuleClient()
 #dirname_run_file="/icarus/app/home/icaruspro/rucio-op/run_to_transfer_102021/run_files/posix"
 #timeout = 300
 #nbatch = 10
-
-pattern=r"run_([0-9]{4})_filelist.local.dat"
+#config["run_file_name_pattern"]=r"run_([0-9]{4})_filelist.local.dat"
 
 file_in_rucio = []
 
@@ -218,7 +217,7 @@ if __name__ == '__main__':
 
   read_config()
 
-  runs = [re.match(pattern, f).group(1) for f in os.listdir(config["run_file_dir"]) if re.match(pattern, f)]
+  runs = [re.match(config["run_file_name_pattern"], f).group(1) for f in os.listdir(config["run_file_dir"]) if re.match(config["run_file_name_pattern"], f)]
   
   file_in_rucio = get_file_in_rucio()
 
