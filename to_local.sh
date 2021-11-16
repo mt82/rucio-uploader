@@ -20,7 +20,7 @@ else
   rm -fr ${ofolder}/*
 fi
 
-rlist=$(ls ./*.tgz)
+rlist=$(ls ./run_files/*.tgz)
 
 for frun in ${rlist}; do
   # remove all files

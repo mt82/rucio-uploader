@@ -158,7 +158,7 @@ def help():
   exit(1)
 
 def upload_run(run):
-  log_file = open("log-{:04d}.txt".format(run),"a",0)
+  log_file = open("logs/log-{:04d}.txt".format(run),"a",0)
   log_file.write(" Start Time = {}\n".format(get_now()))
 
   did_scope = config["scope"]
@@ -221,17 +221,33 @@ if __name__ == '__main__':
   
   file_in_rucio = get_file_in_rucio()
 
-  imin = 0
-  imax = min(imin + 10,len(runs))
+  npar = 10
+  run_lists = [] 
 
-  while(True):
-    if imin >= len(runs):
-      break
-    if imax > len(runs):
-      imax = len(runs)
-    run_list = runs[imin:imax]
+  for i in range(npar):
+    run_lists.append([])
+ 
+  for i in range(len(runs)):
+    run_lists[i%npar].append(runs[i])
+
+  for i in range(npar):
+    run_list = run_lists[i]
     t = Thread(target = upload_runs, args = ([run_list]))
     t.start()
-    imin += 10
-    imax += 10
+    print("launched thread with target: upload_runs and arguments: {}".format(run_list))
+
+#  imin = 0
+#  imax = min(imin + npar,len(runs))
+
+#  while(True):
+#    if imin >= len(runs):
+#      break
+#    if imax > len(runs):
+#      imax = len(runs)
+#    run_list = runs[imin:imax]
+#    t = Thread(target = upload_runs, args = ([run_list]))
+#    t.start()
+#    print("launched thread with target: upload_runs and arguments: {}".format(run_list))
+#    imin += npar
+#    imax += npar
 
