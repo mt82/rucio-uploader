@@ -382,7 +382,7 @@ class uploader:
         """!
         log finalize
         """
-        self.log.write(" ============ run finished    ================\n")
+        self.log.write(" ============ run complete ===================\n")
         self.log.write(" =============================================\n\n")
     
     def init(self, scope, rse):
@@ -588,9 +588,15 @@ class uploader:
             batches[i%n_batches].append(to_upload[i])
             
         self.log.write(" ============ upload =========================\n")
+        threads = []
         for i in range(n_batches):
-            t = Thread(target = self.upload_batch, args = ([batches[i]]))
+            threads.append(Thread(target = self.upload_batch, args = ([batches[i]])))
+        
+        for t in threads:
             t.start()
+
+        for t in threads:
+            t.join()
         self.log.write(" =============================================\n\n")
 
     def attach_all(self):
