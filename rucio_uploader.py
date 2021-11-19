@@ -1,20 +1,20 @@
-#!/icarus/app/home/icaruspro/rucio_client/bin/python
+#!/icarus/app/home/icaruspro/rucio_client/bin/python -u
 
 # This script expects, as input, the path
-# to a folder containg files, each of which
+# to a folder containg files, each of which 
 # contains a list of files related to a run.
-#
+# 
 # This script:
-# 1- reads all the files related to the runs
+# 1- reads all the files related to the runs 
 # 2- translates file surl to local path
 # 3- checks if the files are already in RUCIO
 # 4- checks if the files are already in the datatset, if not add the missing ones
-# 5- checks if a transfer rule already exists, if not define it for the run
+# 5- checks if a transfer rule already exists, if not define it for the run 
 # 6- uploads missing files in parallel threads
 #
 # Assumptions:
 # - the name of the files containg the list of files
-#   of a run should match a pattern and
+#   of a run should match a pattern and 
 #   the run number is extracted from it
 
 import warnings
@@ -74,7 +74,7 @@ class rucio_client:
         self.UPCLIENT = UploadClient()
         self.RULECLIENT = RuleClient()
         self.log_file = log_file
-
+    
     def log(self, message):
         mutex.acquire()
         self.log_file.write(message)
@@ -82,26 +82,34 @@ class rucio_client:
 
     def files_in_rucio(self, scope):
         return list(self.DIDCLIENT.list_dids(scope,{},type="file"))
+    
+    def dataset_in_rucio(self, scope):
+        return list(self.DIDCLIENT.list_dids(scope,{},type="dataset"))
 
     def files_in_dataset(self,dataset_scope,dataset_name):
         return [x["name"] for x in list(self.DIDCLIENT.list_content(dataset_scope,dataset_name))]
-
+    
     def upload(self, items):
         self.log(log("uploading {}".format([x['did_name'] for x in items]), self.upload))
-        #self.UPCLIENT.upload(items)
+        self.UPCLIENT.upload(items)
         self.log(log("uploading {} .. done".format([x['did_name'] for x in items]), self.upload))
-
+    
     def attach(self, dataset_scope, dataset_name, items):
         self.log(log("attaching {} in {}:{}".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach))
-        #self.DIDCLIENT.attach_dids(dataset_scope,dataset_name,items)
+        self.DIDCLIENT.attach_dids(dataset_scope,dataset_name,items)
         self.log(log("attaching {} in {}:{} .. done".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach))
-
+    
     def rules_in_rucio(self, filter):
         return [rule['name'] for rule in list(self.RULECLIENT.list_replication_rules(filter))]
-
+    
+    def add_dataset(self, dataset_scope, dataset_name):
+        self.log(log("adding dataset {}:{}".format(dataset_scope, dataset_name), self.add_dataset))
+        self.DIDCLIENT.add_dataset(dataset_scope, dataset_name)
+        self.log(log("adding dataset {}:{} .. done".format(dataset_scope, dataset_name), self.add_dataset))
+    
     def add_rule(self, dataset_scope, dataset_name, n_replicas, rse):
         self.log(log("adding rule for {}:{} to {}".format(dataset_scope, dataset_name, rse), self.add_rule))
-        #self.RULECLIENT.add_replication_rule([{"scope":dataset_scope, "name": dataset_name}], n_replicas, rse)
+        self.RULECLIENT.add_replication_rule([{"scope":dataset_scope, "name": dataset_name}], n_replicas, rse)
         self.log(log("adding rule for {}:{} to {} .. done".format(dataset_scope, dataset_name, rse), self.add_rule))
 
 class item:
@@ -111,7 +119,7 @@ class item:
         self.r = run
         self.in_rucio=False
         self.in_dataset=False
-
+    
     def run(self):
         return self.r
 
@@ -120,12 +128,12 @@ class item:
 
     def did_name(self):
         return did_name(self.p)
-
+    
     def dataset_name(self):
         return dataset_name(self.r)
 
 class uploader:
-
+  
     def __init__(self):
         self.log = open(datetime.now().strftime('uploader_%H_%M_%d_%m_%Y.log'),"w")
         self.rucio = rucio_client(self.log)
@@ -133,17 +141,17 @@ class uploader:
         self.scope = None
         self.rse = None
         self.directory = None
-
+    
     def __del__(self):
         self.log.close()
-
+    
     def log_initialization(self):
         self.log.write(" ============ initialization =================\n")
         self.log.write("   scope    : {}\n".format(self.scope))
         self.log.write("   rse      : {}\n".format(self.rse))
         self.log.write("   directory: {}\n".format(self.directory))
         self.log.write(" =============================================\n\n")
-
+    
     def log_items(self):
         self.log.write(" ============ items ==========================\n")
         for k,v in self.items.items():
@@ -169,11 +177,17 @@ class uploader:
             self.log.write("   {}\n".format(r))
         self.log.write(" =============================================\n\n")
 
+    def log_datasets_in_rucio(self, datasets):
+        self.log.write(" ============ datasets in RUCIO ==============\n")
+        for ds in datasets:
+            self.log.write("   {}\n".format(ds))
+        self.log.write(" =============================================\n\n")
+
     def log_files_to_upload(self, files):
         self.log.write(" ============ files to upload ================\n")
         for f in files:
-            self.log.write("   {}, {}, {}, {}, {}, {}, {}\n".format(f['did_scope'],
-                                                                  f['did_name'],
+            self.log.write("   {}, {}, {}, {}, {}, {}, {}\n".format(f['did_scope'], 
+                                                                  f['did_name'], 
                                                                   f['dataset_scope'],
                                                                   f['dataset_name'],
                                                                   f['rse'],
@@ -181,13 +195,25 @@ class uploader:
                                                                   f['path']))
         self.log.write(" =============================================\n\n")
 
+    def log_datasets_to_add(self, datasets):
+        self.log.write(" ============ datasets to add ================\n")
+        for ds in datasets:
+            self.log.write("   {}\n".format(ds))
+        self.log.write(" =============================================\n\n")
+
+    def log_rules_to_add(self, rules):
+        self.log.write(" ============ rules to add ===================\n")
+        for rule in rules:
+            self.log.write("   {}\n".format(rule))
+        self.log.write(" =============================================\n\n")
+
     def log_files_to_attach(self, datasets):
-        self.log.write(" ============ rules to attach ================\n")
+        self.log.write(" ============ files to attach ================\n")
         for dn, files in datasets.items():
             for f in files:
                 self.log.write("   {}, {}, {}\n".format(dn, f['name'], f['scope']))
         self.log.write(" =============================================\n\n")
-
+    
     def init(self, scope, rse, directory):
         self.scope = scope
         self.rse = rse
@@ -198,13 +224,13 @@ class uploader:
 
     def did_scope(self):
         return self.scope
-
+    
 #    def did(self, item):
 #        return f"{self.did_scope()}:{self.did_name(item)}"
 
     def dataset_name(self, run):
         return dataset_name(run)
-
+    
     def dataset_scope(self):
         return self.scope
 
@@ -222,34 +248,57 @@ class uploader:
                 fp = filepath(filesurl)
                 fn = filename(fp)
                 self.items[fn] = item(fp,r)
-
+    
     def runs(self):
         runs = set()
         for k,v in self.items.items():
             runs.add(v.run())
         return runs
+    
+    def add_datasets(self, dataset):
+        self.log.write(" ============ add datasets ===================\n")
+        for ds in dataset:
+            self.rucio.add_dataset(self.scope, ds)
+        self.log.write(" =============================================\n\n")
+    
+    def add_rules(self, dataset):
+        self.log.write(" ============ add rules ======================\n")
+        for ds in dataset:
+            self.rucio.add_rule(self.scope, ds, 1, self.rse) 
+        self.log.write(" =============================================\n\n")
 
     def rucio_info(self):
         files_in_rucio = self.rucio.files_in_rucio(self.scope)
         rules_in_rucio = self.rucio.rules_in_rucio({'rse_expression': self.rse})
-
+        dataset_in_rucio = self.rucio.dataset_in_rucio(self.scope)
+        
+        datasets_to_add = []
+        rules_to_add = []
         files_in_dataset = {}
-        self.log.write(" ============ adding rules ===================\n")
+        
         for r in self.runs():
             dn = self.dataset_name(r)
-            files_in_dataset[r] = self.rucio.files_in_dataset(self.dataset_scope(), dn)
             if dn not in rules_in_rucio:
-                self.rucio.add_rule(self.dataset_scope(), dn, 1, self.rse)
-        self.log.write(" =============================================\n\n")
+                rules_to_add.append(dn)
+            if dn not in dataset_in_rucio:
+                datasets_to_add.append(dn)
+            files_in_dataset[r] = self.rucio.files_in_dataset(self.dataset_scope(), dn)
 
         for filename, item in self.items.items():
             item.in_rucio = True if filename in files_in_rucio else False
             item.in_dataset = True if filename in files_in_dataset[item.run()] else False
-
+            
         self.log_files_in_rucio(files_in_rucio)
         self.log_files_in_dataset(files_in_dataset)
         self.log_rules_in_rucio(rules_in_rucio)
-
+        self.log_datasets_in_rucio(dataset_in_rucio)
+        
+        self.log_datasets_to_add(datasets_to_add)
+        self.log_rules_to_add(rules_to_add)
+        
+        self.add_datasets(datasets_to_add)
+        self.add_rules(rules_to_add)
+    
     def to_upload(self, fileitem):
         fup={}
         fup["path"]=fileitem.path()
@@ -260,7 +309,7 @@ class uploader:
         fup["register_after_upload"] = True
         fup["rse"] = 'FNAL_DCACHE'
         return fup
-
+    
     def to_attach(self, item):
         fat={}
         fat['scope'] = self.did_scope()
@@ -274,34 +323,34 @@ class uploader:
                 to_upload.append(self.to_upload(v))
         self.log_files_to_upload(to_upload)
         return to_upload
-
+    
     def files_to_attach(self):
         to_attach = {}
         for k,v in self.items.items():
-            if v.in_dataset == False:
+            if v.in_dataset == False and v.in_rucio == True:
                 dn = self.dataset_name(v.run())
                 if dataset_name not in to_attach:
                     to_attach[dn] = []
                 to_attach[dn].append(self.to_attach(v))
         self.log_files_to_attach(to_attach)
         return to_attach
-
+    
     def upload_item(self, item):
         self.rucio.upload([item])
 
     def upload_batch(self, items):
         for item in items:
             self.upload_item(item)
-
+    
     def upload_all(self, n_batches):
         batches = []
         for i in range(n_batches):
             batches.append([])
-
+        
         to_upload = self.files_to_upload()
         for i in range(len(to_upload)):
             batches[i%n_batches].append(to_upload[i])
-
+            
         self.log.write(" ============ upload =========================\n")
         for i in range(n_batches):
             t = Thread(target = self.upload_batch, args = ([batches[i]]))
@@ -315,12 +364,12 @@ class uploader:
         self.log.write(" =============================================\n\n")
 
     def run(self):
-        self.log_initialization()
-        self.read()
-        self.rucio_info()
-        self.log_items()
-        self.attach_all()
-        self.upload_all(20)
+      self.log_initialization()
+      self.read()
+      self.rucio_info()
+      self.log_items()
+      self.attach_all()
+      self.upload_all(20)
 
 if __name__ == '__main__':
     up = uploader()
