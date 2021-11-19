@@ -27,8 +27,10 @@ from rucio.client.ruleclient import RuleClient
 from threading import Thread, Lock
 from datetime import datetime
 
+# pattern of the file containing the list of file for a run
 filename_run_pattern=r"run_([0-9]{4})_filelist.dat"
 
+# lock to avoid concurrencing in writing log
 mutex = Lock()
 
 # extract run number from file name
