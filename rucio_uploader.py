@@ -37,6 +37,7 @@ import tarfile
 from rucio.client.uploadclient import UploadClient
 from rucio.client.didclient import DIDClient
 from rucio.client.ruleclient import RuleClient
+from rucio.common import exception
 from threading import Thread, Lock
 from datetime import datetime
 
@@ -134,6 +135,7 @@ class rucio_client:
         mutex.acquire()
         try:
             self.log_file.write(message)
+            self.log_file.flush()
         finally:
             mutex.release()
 
@@ -160,8 +162,12 @@ class rucio_client:
         Upload files
         """
         self.log(log("uploading {}".format([x['did_name'] for x in items]), self.upload))
-        self.UPCLIENT.upload(items)
-        self.log(log("uploading {} .. done".format([x['did_name'] for x in items]), self.upload))
+        try:
+            self.UPCLIENT.upload(items)
+        except exception.NoFilesUploaded:
+            self.log(log("uploading {} .. fail".format([x['did_name'] for x in items]), self.upload))
+        else:
+            self.log(log("uploading {} .. done".format([x['did_name'] for x in items]), self.upload))
     
     def attach(self, dataset_scope, dataset_name, items):
         """!
@@ -589,7 +595,7 @@ class uploader:
 
     def attach_all(self):
         """!
-        upload all items
+        attach all items
         """
         self.log.write(" ============ attach =========================\n")
         for ds, items in self.files_to_attach().items():
