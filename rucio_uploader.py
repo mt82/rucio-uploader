@@ -1,11 +1,16 @@
 #!/icarus/app/home/icaruspro/rucio_client/bin/python -u
 
-# This script expects, as input, the path
-# to a folder containg files, each of which 
+"""@package docstring
+Documentation for this module.
+
+More details.
+
+# This script expects, as input, a set of tar files
+# containig a set of text files, each of which 
 # contains a list of files related to a run.
 # 
 # This script:
-# 1- reads all the files related to the runs 
+# 1- reads all the files related to the runs from a tar file
 # 2- translates file surl to local path
 # 3- checks if the files are already in RUCIO
 # 4- checks if the files are already in the datatset, if not add the missing ones
@@ -16,25 +21,38 @@
 # - the name of the files containg the list of files
 #   of a run should match a pattern and 
 #   the run number is extracted from it
+"""
 
+
+# remove warning from cryptography not supporting python2 
 import warnings
 warnings.filterwarnings("ignore")
+
 import re
 import os
+import sys
+import tarfile
+
 from rucio.client.uploadclient import UploadClient
 from rucio.client.didclient import DIDClient
 from rucio.client.ruleclient import RuleClient
 from threading import Thread, Lock
 from datetime import datetime
 
-# pattern of the file containing the list of file for a run
+# pattern expected for text file containing the list of list of a run
 filename_run_pattern=r"run_([0-9]{4})_filelist.dat"
 
-# lock to avoid concurrencing in writing log
+# lock for cuncurrent writing of log file
 mutex = Lock()
 
-# extract run number from file name
 def run_number(filename):
+    """!
+    Extract run number from file name
+
+    @param filename String: name of the file
+
+    @return Return the run number extracted from file name
+    """
     matches = re.match(filename_run_pattern, filename)
     if matches is None:
         return None
@@ -42,8 +60,16 @@ def run_number(filename):
         return matches.group(1)
 
 def filename(filepath):
+    """!
+    Return filename from filepath 
+
+    @param filename String: name of the file
+
+    @return Return the run number extracted from file name
+    """
     return os.path.basename(filepath)
 
+# return dataset name 
 def dataset_name(run):
     return "run-{}-raw".format(run)
 
@@ -79,8 +105,10 @@ class rucio_client:
     
     def log(self, message):
         mutex.acquire()
-        self.log_file.write(message)
-        mutex.release()
+        try:
+            self.log_file.write(message)
+        finally:
+            mutex.release()
 
     def files_in_rucio(self, scope):
         return list(self.DIDCLIENT.list_dids(scope,{},type="file"))
@@ -142,7 +170,6 @@ class uploader:
         self.items = {}
         self.scope = None
         self.rse = None
-        self.directory = None
     
     def __del__(self):
         self.log.close()
@@ -151,7 +178,17 @@ class uploader:
         self.log.write(" ============ initialization =================\n")
         self.log.write("   scope    : {}\n".format(self.scope))
         self.log.write("   rse      : {}\n".format(self.rse))
-        self.log.write("   directory: {}\n".format(self.directory))
+        self.log.write(" =============================================\n\n")
+    
+#    def log_directory(self, directory):
+#        self.log.write(" ============ directory ======================\n")
+#        self.log.write("   directory: {}\n".format(directory))
+#        self.log.write(" =============================================\n\n")
+    
+    def log_tarfile(self, tfiles):
+        self.log.write(" ============ input tar file =================\n")
+        for f in tfiles:
+            self.log.write("   tar file : {}\n".format(f))
         self.log.write(" =============================================\n\n")
     
     def log_items(self):
@@ -215,11 +252,14 @@ class uploader:
             for f in files:
                 self.log.write("   {}, {}, {}\n".format(dn, f['name'], f['scope']))
         self.log.write(" =============================================\n\n")
+
+    def log_finalize(self):
+        self.log.write(" ============ run finished    ================\n")
+        self.log.write(" =============================================\n\n")
     
-    def init(self, scope, rse, directory):
+    def init(self, scope, rse):
         self.scope = scope
         self.rse = rse
-        self.directory = directory
 
     def did_name(self, item):
         return item.did_name()
@@ -241,15 +281,27 @@ class uploader:
 
     def reset(self):
         self.items = {}
-
-    def read(self):
+    
+    def read_tar(self, tfiles):
         self.reset()
-        for run_file in run_files(self.directory):
-            r = run_number(run_file)
-            for filesurl in files_in_run(os.path.join(self.directory,run_file)):
-                fp = filepath(filesurl)
-                fn = filename(fp)
-                self.items[fn] = item(fp,r)
+        for t in tfiles:
+            tar = tarfile.open(t,"r:gz")
+            for el in tar.getmembers():
+                if el.isfile():
+                    r = run_number(el.name)
+                    for filesurl in tar.extractfile(el).readlines():
+                        fp = filepath(filesurl.strip())
+                        fn = filename(fp)
+                        self.items[fn] = item(fp,r)
+
+#    def read(self, directory):
+#        self.reset()
+#        for run_file in run_files(directory):
+#            r = run_number(run_file)
+#            for filesurl in files_in_run(os.path.join(directory,run_file)):
+#                fp = filepath(filesurl)
+#                fn = filename(fp)
+#                self.items[fn] = item(fp,r)
     
     def runs(self):
         runs = set()
@@ -365,15 +417,18 @@ class uploader:
           self.rucio.attach(self.dataset_scope(), ds, items)
         self.log.write(" =============================================\n\n")
 
-    def run(self):
+    def run(self, tfiles):
       self.log_initialization()
-      self.read()
+      self.log_tarfile(tfiles)
+      self.read_tar(tfiles)
       self.rucio_info()
       self.log_items()
       self.attach_all()
       self.upload_all(20)
+      self.log_finalize()
 
 if __name__ == '__main__':
-    up = uploader()
-    up.init("user.icaruspro","INFN_CNAF_DISK_TEST","/icarus/app/home/icaruspro/rucio-op/run_to_transfer_112021/surl")
-    up.run()
+    if len(sys.argv) > 1:
+        up = uploader()
+        up.init("user.icaruspro","INFN_CNAF_DISK_TEST")
+        up.run(sys.argv[1:])
