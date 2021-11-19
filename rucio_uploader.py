@@ -589,7 +589,7 @@ class uploader:
 
     def attach_all(self):
         """!
-        upload all items
+        attach all items
         """
         self.log.write(" ============ attach =========================\n")
         for ds, items in self.files_to_attach().items():
