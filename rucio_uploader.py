@@ -274,6 +274,7 @@ class uploader:
         self.log.write("   scope    : {}\n".format(self.scope))
         self.log.write("   rse      : {}\n".format(self.rse))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
     
 #    def log_directory(self, directory):
 #        self.log.write(" ============ directory ======================\n")
@@ -288,6 +289,7 @@ class uploader:
         for f in tfiles:
             self.log.write("   tar file : {}\n".format(f))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
     
     def log_items(self):
         """!
@@ -297,6 +299,7 @@ class uploader:
         for k,v in self.items.items():
             self.log.write("   {}, {}, {}, {}, {}\n".format(k,v.path(),v.run(),v.in_rucio,v.in_dataset))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
 
     def log_files_in_rucio(self, files):
         """!
@@ -306,6 +309,7 @@ class uploader:
         for f in files:
             self.log.write("   {}\n".format(f))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
 
     def log_files_in_dataset(self, datasets):
         """!
@@ -316,6 +320,7 @@ class uploader:
             for f in files:
                 self.log.write("   {}, {}\n".format(run,f))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
 
     def log_rules_in_rucio(self, rules):
         """!
@@ -325,6 +330,7 @@ class uploader:
         for r in rules:
             self.log.write("   {}\n".format(r))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
 
     def log_datasets_in_rucio(self, datasets):
         """!
@@ -334,6 +340,7 @@ class uploader:
         for ds in datasets:
             self.log.write("   {}\n".format(ds))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
 
     def log_files_to_upload(self, files):
         """!
@@ -349,6 +356,7 @@ class uploader:
                                                                   f['register_after_upload'],
                                                                   f['path']))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
 
     def log_datasets_to_add(self, datasets):
         """!
@@ -358,6 +366,7 @@ class uploader:
         for ds in datasets:
             self.log.write("   {}\n".format(ds))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
 
     def log_rules_to_add(self, rules):
         """!
@@ -367,6 +376,7 @@ class uploader:
         for rule in rules:
             self.log.write("   {}\n".format(rule))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
 
     def log_files_to_attach(self, datasets):
         """!
@@ -377,6 +387,7 @@ class uploader:
             for f in files:
                 self.log.write("   {}, {}, {}\n".format(dn, f['name'], f['scope']))
         self.log.write(" =============================================\n\n")
+        self.log.flush()
 
     def log_finalize(self):
         """!
@@ -384,6 +395,7 @@ class uploader:
         """
         self.log.write(" ============ run complete ===================\n")
         self.log.write(" =============================================\n\n")
+        self.log.flush()
     
     def init(self, scope, rse):
         """!
