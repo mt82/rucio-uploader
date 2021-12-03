@@ -114,7 +114,7 @@ def log(message, function):
     """
     return "   {} : [{}] -> \"{}\"\n".format(format_now(), function.__name__, message)
 
-class rucio_client:
+class RucioClient:
     """!
     Rucio client with did, upload 
     and rule functionality
@@ -199,7 +199,56 @@ class rucio_client:
         self.RULECLIENT.add_replication_rule([{"scope":dataset_scope, "name": dataset_name}], n_replicas, rse)
         self.log(log("adding rule for {}:{} to {} .. done".format(dataset_scope, dataset_name, rse), self.add_rule))
 
-class item:
+
+class RucioDID:
+    """!
+    Represent a RUCIO dataset
+    """
+    def __init__(self, path, name, scope, ds_name = None, ds_scope = None):
+        """!
+        Dataset constructor
+        """
+        self.name = name
+        self.scope = scope
+        self.path = path
+        self.ds_name = ds_name
+        self.ds_scope = ds_scope
+
+class RucioDataset:
+    """!
+    Represent a RUCIO dataset
+    """
+
+    def __init__(self, name, scope):
+        """!
+        Dataset constructor
+        """
+        self.name = name
+        self.scope = scope
+        self.dids = []
+    
+    def add_did(self, did):
+        """!
+        Add did
+        """
+        self.dids.append(did)
+
+class RucioRule:
+    """!
+    Represent a RUCIO rule
+    """
+
+    def __init__(self, rse, did, ncopy = 1):
+        """!
+        Rule constructor
+        """
+        self.rse = rse
+        self.did = did
+        self.ncopy = ncopy
+
+
+
+class RunRawFileItem:
     """!
     Local file descripted by a path 
     and a run it delongs
@@ -238,7 +287,7 @@ class item:
         """
         return dataset_name(self.r)
 
-class uploader:
+class Uploader:
     """!
     Uploader manages all the processes
     needed to replicate data at the final RSE
@@ -255,7 +304,7 @@ class uploader:
         uploader constructor
         """
         self.log = open(datetime.now().strftime('uploader_%H_%M_%d_%m_%Y.log'),"w")
-        self.rucio = rucio_client(self.log)
+        self.rucio = RucioClient(self.log)
         self.items = {}
         self.scope = None
         self.rse = None
@@ -453,7 +502,7 @@ class uploader:
                     for filesurl in tar.extractfile(el).readlines():
                         fp = filepath(filesurl.strip())
                         fn = filename(fp)
-                        self.items[fn] = item(fp,r)
+                        self.items[fn] = RunRawFileItem(fp,r)
 
 #    def read(self, directory):
 #        self.reset()
@@ -635,6 +684,6 @@ class uploader:
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
-        up = uploader()
+        up = Uploader()
         up.init("user.icaruspro","INFN_CNAF_DISK_TEST")
         up.run(sys.argv[1:])
