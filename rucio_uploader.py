@@ -94,7 +94,6 @@ class RucioDID:
         self.asAttach = {}
         self.in_rucio=False
         self.in_dataset=False
-        self.toAttach()
 
     def toUpload(self, register_after_upload, rse):
         """!
@@ -284,6 +283,7 @@ class RucioItemsCreator:
             did.scope = self.scope
             did.ds_scope = self.scope
             did.toUpload(True, self.upl_rse)
+            did.toAttach()
             self.dids[scopedItemName(did)] = did
 
 
@@ -832,8 +832,9 @@ class Uploader:
         """!
         attach all items
         """
+        dids_to_attach = self.dids_to_attach()
         self.log.write(" ============ attach =========================\n")
-        for ds, items in self.dids_to_attach().items():
+        for ds, items in dids_to_attach.items():
           name, scope = ScopeAndName(ds)
           self.rucio.attach(scope, name, items)
         self.log.write(" =============================================\n\n")
