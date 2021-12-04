@@ -590,10 +590,17 @@ class Uploader:
         self.log_dids_to_attach(self, datasets)
         self.log_rules_to_add(self, rules)
 
-
-    def log_finalize(self):
+    def start_log(self):
         """!
-        log finalize
+        start log
+        """
+        self.log.write(" ============ run start ======================\n")
+        self.log.write(" =============================================\n\n")
+        self.log.flush()
+
+    def stop_log(self):
+        """!
+        stop log
         """
         self.log.write(" ============ run complete ===================\n")
         self.log.write(" =============================================\n\n")
@@ -739,11 +746,12 @@ class Uploader:
         """!
         process items
         """
+        self.start_log()
         self.rucio_info()
         self.log_input()
         self.attach_all()
         self.upload_all(20)
-        self.log_finalize()
+        self.stop_log()
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
