@@ -49,6 +49,10 @@ filename_run_pattern=r"run_([0-9]{4})_filelist.dat"
 # lock for cuncurrent writing of log file
 mutex = Lock()
 
+config = {"scope":"user.icaruspro",
+          "upl_rse":"FNAL_DCACHE", 
+          "dst_rse":"INFN_CNAF_DISK_TEST"}
+
 def format_now():
     """!
     Return a string with date and hours formatted
@@ -74,6 +78,19 @@ def scopedItemName(item):
     return scopedName(item.name,item.scope)
 
 def ScopeAndName(sname):
+    """Split the scopedname in name and scope
+    and return both
+
+    Parameters
+    ----------
+    sname : [str]
+        [scopedName]
+
+    Returns
+    -------
+    [tuple]
+        [name and scope]
+    """
     splits = sname.split(':')
     return splits[0],splits[1]
 
@@ -113,6 +130,19 @@ class RucioDID:
         """
         self.asAttach['scope'] = self.scope
         self.asAttach['name'] = self.name
+    
+    def configure(self, register_after_upload, rse):
+        """Configure the did
+
+        Parameters
+        ----------
+        register_after_upload : [bool]
+            [true to make RUCIO registering the item after the upload]
+        rse : [str]
+            [upload rse]
+        """
+        self.toUpload(register_after_upload, rse)
+        self.toAttach()
 
 class RucioDataset:
     """!
@@ -149,12 +179,12 @@ class RawFileItem:
     and a run it delongs
     """
 
-    def __init__(self, path, run):
+    def __init__(self, surl, file):
         """!
         Item constructor
         """
-        self.p = path
-        self.r = run
+        self.s = surl
+        self.f = file
 
 class TarReader:
     """!
@@ -167,32 +197,59 @@ class TarReader:
         """
         self.tars = tarlists
         self.items = []
-        self.dids = []
         self.read()
-        self.toDID()
-    
-    def reset(self):
-        """!
-        reset TarReader 
-        """
-        self.items = []
-        self.dids = []
-
     
     def read(self):
         """!
         read tar and fill items 
         """
-        self.reset()
+        self.items = []
         for t in self.tars:
             tar = tarfile.open(t,"r:gz")
             for el in tar.getmembers():
                 if el.isfile():
-                    r = self.run_number(el.name)
                     for filesurl in tar.extractfile(el).readlines():
-                        fp = self.filepath(filesurl.decode("utf-8").strip())
-                        self.items.append(RawFileItem(fp,r))
+                        self.items.append(RawFileItem(filesurl.decode("utf-8").strip(),el.name))
 
+class TarItemsConfigurator:
+    """!
+    RucioItemsCreator creates dataset and rules 
+    """
+
+    def __init__(self, tar, config):
+        """!
+        RucioItemsCreator constructor
+        """
+        self.scope = config["scope"]
+        self.upl_rse = config["upl_rse"]
+        self.dst_rse = config["dst_rse"]
+        self.dids = {}
+        self.datasets = {}
+        self.rules = {}
+        self.createDIDs(tar)
+        self.createDatasets()
+        self.createRules()
+
+    def filepath(self, filesurl):
+        """!
+        Translate file surl to local file path
+        """
+        return re.sub("gsiftp://fndca1.fnal.gov:2811/pnfs/fnal.gov/usr",
+                      "/pnfs",
+                      filesurl)
+
+    def filename(self, filepath):
+        """!
+        Return filename from filepath
+        """
+        return os.path.basename(filepath)
+
+    def did_name(self, filepath):
+        """!
+        Return did name from filepath
+        """
+        return self.filename(filepath)
+        
     def run_number(self, filename):
         """!
         Extract run number from file name
@@ -203,87 +260,28 @@ class TarReader:
         else:
             return matches.group(1)
 
-    def filename(self, filepath):
-        """!
-        Return filename from filepath
-        """
-        return os.path.basename(filepath)
-
     # return dataset name 
     def dataset_name(self, run):
         """!
         Construct dataset name from run number
         """
         return "run-{}-raw".format(run)
-
-    def did_name(self, filepath):
-        """!
-        Return did name from filepath
-        """
-        return self.filename(filepath)
-
-    # def run_files(directory):
-    #     """!
-    #     Scan a directory and return a list 
-    #     of files with name matching a pattern
-    #     """
-    #     return [file for file in os.listdir(directory) if re.match(filename_run_pattern,file)]
-
-    # def files_in_run(self, filename):
-    #     """!
-    #     Return a list of the lines within a file.
-    #     This corresponds to get a list of paths of files
-    #     belonging to a run
-    #     """
-    #     files = []
-    #     with open(filename) as f:
-    #         files=f.read().splitlines()
-    #     return files
-
-    def filepath(self, filesurl):
-        """!
-        Translate file surl to local file path
-        """
-        return re.sub("gsiftp://fndca1.fnal.gov:2811/pnfs/fnal.gov/usr",
-                    "/pnfs",
-                    filesurl)
     
-    def toDID(self):
-        """!
-        Convert RawFileItems into Rucio dids
-        and related datasets and rules
-        """
-        for item in self.items:
-            self.dids.append(RucioDID(item.p, self.did_name(item.p), None, self.dataset_name(item.r), None))
-
-class RucioItemsCreator:
-    """!
-    RucioItemsCreator creates dataset and rules 
-    """
-
-    def __init__(self, dids, scope, upl_rse, dst_rse):
-        """!
-        RucioItemsCreator constructor
-        """
-        self.scope = scope
-        self.upl_rse = upl_rse
-        self.dst_rse = dst_rse
-        self.dids = {}
-        self.datasets = {}
-        self.rules = {}
-        self.createDIDs(dids)
-        self.createDatasets()
-        self.createRules()
-    
-    def createDIDs(self, dids):
+    def createDIDs(self, tar):
         """!
         Creates DIDs
         """
-        for did in dids:
-            did.scope = self.scope
-            did.ds_scope = self.scope
-            did.toUpload(True, self.upl_rse)
-            did.toAttach()
+        for item in tar.items:
+            path = self.filepath(item.s)
+            name = self.did_name(path)
+            run = self.run_number(item.f)
+            ds_name = self.dataset_name(run)
+            did = RucioDID(path, 
+                           name, 
+                           self.scope, 
+                           ds_name, 
+                           self.scope)
+            did.configure(True, self.upl_rse)
             self.dids[scopedItemName(did)] = did
 
 
@@ -413,14 +411,14 @@ class Uploader:
     - upload missing files to Rucio
     """
   
-    def __init__(self, scope, rse, dids, datasets, rules):
+    def __init__(self, dids, datasets, rules, config):
         """!
         uploader constructor
         """
         self.log = open(datetime.now().strftime('uploader_%Y_%m_%d_%H_%M_%S.log'),"w")
         self.rucio = RucioClient(self.log)
-        self.scope = scope
-        self.rse = rse
+        self.scope = config["scope"]
+        self.rse = config["dst_rse"]
         self.dids = dids
         self.datasets = datasets
         self.rules = rules
@@ -430,31 +428,6 @@ class Uploader:
         uploader destructor
         """
         self.log.close()
-    
-    # def log_initialization(self):
-    #     """!
-    #     log initialization
-    #     """
-    #     self.log.write(" ============ initialization =================\n")
-    #     self.log.write("   scope    : {}\n".format(self.scope))
-    #     self.log.write("   rse      : {}\n".format(self.rse))
-    #     self.log.write(" =============================================\n\n")
-    #     self.log.flush()
-    
-#    def log_directory(self, directory):
-#        self.log.write(" ============ directory ======================\n")
-#        self.log.write("   directory: {}\n".format(directory))
-#        self.log.write(" =============================================\n\n")
-    
-    # def log_tarfile(self, tfiles):
-    #     """!
-    #     log tar files
-    #     """
-    #     self.log.write(" ============ input tar file =================\n")
-    #     for f in tfiles:
-    #         self.log.write("   tar file : {}\n".format(f))
-    #     self.log.write(" =============================================\n\n")
-    #     self.log.flush()
     
     def log_dids_input(self):
         """!
@@ -487,6 +460,8 @@ class Uploader:
         self.log.flush()
     
     def log_input(self):
+        """Log inputs
+        """
         self.log_dids_input()
         self.log_datasets_input()
         self.log_rules_input()
@@ -533,6 +508,19 @@ class Uploader:
         self.log.flush()
     
     def log_rucio(self, dids, datasets, dids_in_dataset, rules):
+        """Log Rucio status
+
+        Parameters
+        ----------
+        dids : [list]
+            [list of dids]
+        datasets : [list]
+            [list of datasets]
+        dids_in_dataset : [dict]
+            [key: dataset scopedName, value: list of dids in dataset]
+        rules : [list]
+            [list of rules]
+        """
         self.log_dids_in_rucio(dids)
         self.log_datasets_in_rucio(datasets)
         self.log_dids_in_dataset(dids_in_dataset)
@@ -586,6 +574,17 @@ class Uploader:
         self.log.flush()
     
     def log_todo(self, dids, datasets, rules):
+        """Log actions to do
+
+        Parameters
+        ----------
+        dids : [list]
+            [list of dids]
+        datasets : [list]
+            [list of datasets]
+        rules : [list]
+            [list of rules]
+        """
         self.log_dids_to_upload(self, dids)
         self.log_datasets_to_add(self, datasets)
         self.log_dids_to_attach(self, datasets)
@@ -599,82 +598,6 @@ class Uploader:
         self.log.write(" ============ run complete ===================\n")
         self.log.write(" =============================================\n\n")
         self.log.flush()
-    
-    # def init(self, scope, rse):
-    #     """!
-    #     initialize uploader
-    #     """
-    #     self.scope = scope
-    #     self.rse = rse
-
-    # def did_name(self, item):
-    #     """!
-    #     get did name from item
-    #     """
-    #     return item.did_name()
-
-    # def did_scope(self):
-    #     """!
-    #     get did scope
-    #     """
-    #     return self.scope
-    
-#    def did(self, item):
-#        return f"{self.did_scope()}:{self.did_name(item)}"
-
-    # def dataset_name(self, run):
-    #     """!
-    #     get did name from item
-    #     """
-    #     return dataset_name(run)
-    
-    # def dataset_scope(self):
-    #     """!
-    #     get dateset scope
-    #     """
-    #     return self.scope
-
-#    def dataset(self,item):
-#        return f"{self.dataset_scope()}:{self.dataset_name(item)}"
-
-    # def reset(self):
-    #     """!
-    #     reset item dictionary
-    #     """
-    #     self.items = {}
-    
-    # def read_tar(self, tfiles):
-    #     """!
-    #     read tar and fill items 
-    #     """
-    #     self.reset()
-    #     for t in tfiles:
-    #         tar = tarfile.open(t,"r:gz")
-    #         for el in tar.getmembers():
-    #             if el.isfile():
-    #                 r = run_number(el.name)
-    #                 for filesurl in tar.extractfile(el).readlines():
-    #                     fp = filepath(filesurl.strip())
-    #                     fn = filename(fp)
-    #                     self.items[fn] = RawFileItem(fp,r)
-
-#    def read(self, directory):
-#        self.reset()
-#        for run_file in run_files(directory):
-#            r = run_number(run_file)
-#            for filesurl in files_in_run(os.path.join(directory,run_file)):
-#                fp = filepath(filesurl)
-#                fn = filename(fp)
-#                self.items[fn] = item(fp,r)
-    
-    # def runs(self):
-    #     """!
-    #     get list of runs
-    #     """
-    #     runs = set()
-    #     for k,v in self.items.items():
-    #         runs.add(v.run())
-    #     return runs
     
     def add_datasets(self, datasets):
         """!
@@ -715,38 +638,6 @@ class Uploader:
         for name, did in self.dids.items():
             did.in_rucio = True if name in dids_in_rucio else False
             did.in_dataset = True if name in dids_in_dataset[scopedName(did.ds_name, did.ds_scope)] else False
-        
-        # datasets_to_add = [ds for name, ds in self.datasets().items() if name not in dataset_in_rucio]
-        # rules_to_add = [rule for name, rule in self.rules().items() if name not in rules_in_rucio]
-        
-        # self.log_datasets_to_add(datasets_to_add)
-        # self.log_rules_to_add(rules_to_add)
-        
-        # self.add_datasets(datasets_to_add)
-        # self.add_rules(rules_to_add)
-    
-    # def to_upload(self, fileitem):
-    #     """!
-    #     prepare an item to be uploaded to rucio
-    #     """
-    #     fup={}
-    #     fup["path"]=fileitem.path()
-    #     fup["did_name"] = self.did_name(fileitem)
-    #     fup["did_scope"] = self.did_scope()
-    #     fup['dataset_name'] = self.dataset_name(fileitem.run())
-    #     fup['dataset_scope'] = self.dataset_scope()
-    #     fup["register_after_upload"] = True
-    #     fup["rse"] = 'FNAL_DCACHE'
-    #     return fup
-    
-    # def to_attach(self, item):
-    #     """!
-    #     prepare an item to be attached to dataset
-    #     """
-    #     fat={}
-    #     fat['scope'] = self.did_scope()
-    #     fat['name'] = self.did_name(item)
-    #     return fat
 
     def dids_to_upload(self):
         """!
@@ -774,35 +665,40 @@ class Uploader:
         return to_attach
 
     def datasets_to_add(self):
+        """Identify the missing datasets that have to be added
+
+        Returns
+        -------
+        [list]
+            [datasets to be added in RUCIO]
+        """
         datasets_to_add = [ds for ds in self.datasets().values() if not ds.in_rucio]
         self.log_datasets_to_add(datasets_to_add)
         return datasets_to_add
 
     def rules_to_add(self):
+        """Identify the missing rules that have to added
+
+        Returns
+        -------
+        [list]
+            [rules to be added]
+        """
         rules_to_add = [rule for rule in self.rules().values() if not rule.in_rucio]
         self.log_rules_to_add(rules_to_add)
         return rules_to_add
     
     def add_datasets(self):
+        """Add datasets
+        """
         datasets_to_add = self.datasets_to_add()
         self.add_datasets(datasets_to_add)
     
     def add_rules(self):
+        """Add rules
+        """
         rules_to_add = self.rules_to_add()
         self.add_rules(rules_to_add)
-    
-    # def upload_item(self, item):
-    #     """!
-    #     upload list of items: generarly one
-    #     """
-    #     self.rucio.upload([item])
-
-    # def upload_batch(self, items):
-    #     """!
-    #     upload batch of items
-    #     """
-    #     for item in items:
-    #         self.upload_item(item)
     
     def upload_all(self, n_batches):
         """!
@@ -851,7 +747,5 @@ class Uploader:
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
-        trf = TarReader(sys.argv[1:])
-        ric = RucioItemsCreator(trf.dids, "user.icaruspro", "FNAL_DCACHE", "INFN_CNAF_DISK_TEST")
-        up = Uploader(ric.scope, ric.dst_rse, ric.dids, ric.datasets, ric.rules)
-        up.run()
+        items = TarItemsConfigurator(TarReader(sys.argv[1:]), config)
+        Uploader(items.dids, items.datasets, items.rules, config).run()
