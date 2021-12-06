@@ -35,6 +35,7 @@ import re
 import os
 import sys
 import tarfile
+import argparse
 
 from rucio.client.uploadclient import UploadClient
 from rucio.client.didclient import DIDClient
@@ -43,15 +44,8 @@ from rucio.common import exception
 from threading import Thread, Lock
 from datetime import datetime
 
-# pattern expected for text file containing the list of list of a run
-filename_run_pattern=r"run_([0-9]{4})_filelist.dat"
-
 # lock for cuncurrent writing of log file
 mutex = Lock()
-
-config = {"scope":"user.icaruspro",
-          "upl_rse":"FNAL_DCACHE", 
-          "dst_rse":"INFN_CNAF_DISK_TEST"}
 
 def format_now():
     """!
@@ -173,7 +167,21 @@ class RucioRule:
         self.ncopy = ncopy
         self.in_rucio=False
 
-class RawFileItem:
+class FileItem:
+    """!
+    Class to represent a file 
+    """
+
+    def __init__(self,path):
+        """File constructor
+
+        Parameters
+        ----------
+        path : [str]
+            [path of the file]
+        """
+        self.path = path
+class TarItem:
     """!
     Local file descripted by a path 
     and a run it delongs
@@ -185,6 +193,40 @@ class RawFileItem:
         """
         self.s = surl
         self.f = file
+
+class DirectoryTreeReader:
+    """Read all the items of a directory
+    """
+
+    def __init__(self, dirs):
+        """DirectoryTreeReader Constructor
+
+        Parameters
+        ----------
+        dir : [str]
+            [directory]
+        """
+        self.items = {}
+        self.read_all(dirs)
+
+    def read(self,dir):
+        """Read all the files in a directory
+        """
+        for fname in os.listdir(dir):
+            it = os.path.join(dir, fname)
+            if os.path.isfile(it):
+                if fname in self.items:
+                    print("ERROR: items with same filename:")
+                    print(" - {}".format(self.items[fname]))
+                    print(" - {}".format(it))
+                    exit(1)
+                self.items[fname] = FileItem(it)
+            elif os.path.isdir(it):
+                self.read(it)
+
+    def read_all(self, dirs):
+        for dir in dirs:
+            self.read(dir)
 
 class TarReader:
     """!
@@ -209,24 +251,22 @@ class TarReader:
             for el in tar.getmembers():
                 if el.isfile():
                     for filesurl in tar.extractfile(el).readlines():
-                        self.items.append(RawFileItem(filesurl.decode("utf-8").strip(),el.name))
+                        self.items.append(TarItem(filesurl.decode("utf-8").strip(),el.name))
 
 class TarItemsConfigurator:
     """!
     RucioItemsCreator creates dataset and rules 
     """
 
-    def __init__(self, tar, config):
+    def __init__(self, titems, config):
         """!
         RucioItemsCreator constructor
         """
-        self.scope = config["scope"]
-        self.upl_rse = config["upl_rse"]
-        self.dst_rse = config["dst_rse"]
+        self.config = config
         self.dids = {}
         self.datasets = {}
         self.rules = {}
-        self.createDIDs(tar)
+        self.createDIDs(titems)
         self.createDatasets()
         self.createRules()
 
@@ -254,7 +294,7 @@ class TarItemsConfigurator:
         """!
         Extract run number from file name
         """
-        matches = re.match(filename_run_pattern, filename)
+        matches = re.match(self.config["filename_run_pattern"], filename)
         if matches is None:
             return None
         else:
@@ -265,23 +305,23 @@ class TarItemsConfigurator:
         """!
         Construct dataset name from run number
         """
-        return "run-{}-raw".format(run)
+        return self.config["ds_name_template"].format(run)
     
-    def createDIDs(self, tar):
+    def createDIDs(self, titems):
         """!
         Creates DIDs
         """
-        for item in tar.items:
+        for item in titems.items:
             path = self.filepath(item.s)
             name = self.did_name(path)
             run = self.run_number(item.f)
             ds_name = self.dataset_name(run)
             did = RucioDID(path, 
                            name, 
-                           self.scope, 
+                           self.config["scope"], 
                            ds_name, 
-                           self.scope)
-            did.configure(True, self.upl_rse)
+                           self.config["scope"])
+            did.configure(self.config["register_after_upload"], self.config["upl_rse"])
             self.dids[scopedItemName(did)] = did
 
 
@@ -292,7 +332,7 @@ class TarItemsConfigurator:
         for did in self.dids.values():
             sname = scopedName(did.ds_name, did.ds_scope)
             if sname not in self.datasets:
-                self.datasets[sname] = RucioDataset(did.ds_name, self.scope, [did])
+                self.datasets[sname] = RucioDataset(did.ds_name, self.config["scope"], [did])
             self.datasets[sname].dids.append(did)
 
 
@@ -301,7 +341,101 @@ class TarItemsConfigurator:
         Creates Rules
         """
         for sname, ds in self.datasets.items():
-            self.rules[sname] = RucioRule(self.dst_rse, ds.name, ds.scope)
+            self.rules[sname] = RucioRule(self.config["dst_rse"], ds.name, ds.scope)
+
+class FileItemsConfigurator:
+    """FileItemsConfigurator
+    """
+
+    def __init__(self, fitems, config):
+        """FileItemsConfigurator Constructor
+
+        Parameters
+        ----------
+        fitems : [list]
+            [files]
+        config : [dict]
+            [configuration]
+        """
+        self.config = config
+        self.dids = {}
+        self.datasets = {}
+        self.rules = {}
+        self.createDIDs(fitems)
+        self.createDatasets()
+        self.createRules()
+
+    def run_number(self, filename):
+        """!
+        Extract run number from file name
+        """
+        matches = re.match(self.config["filename_run_pattern"], filename)
+        if matches is None:
+            return None
+        else:
+            return matches.group(1)
+    
+    def file_matches(self, filename):
+        """Check if file name matches with pattern
+
+        Parameters
+        ----------
+        fname : [str]
+            [filename]
+
+        Returns
+        -------
+        [bool]
+            [True if filename macthes pattern]
+        """
+        matches = re.match(self.config["filename_run_pattern"], filename)
+        if matches is None:
+            return False
+        else:
+            return True
+
+    # return dataset name 
+    def dataset_name(self, run):
+        """!
+        Construct dataset name from run number
+        """
+        return self.config["ds_name_template"].format(run)
+    
+    def createDIDs(self, fitems):
+        """!
+        Creates DIDs
+        """
+        for name, item in fitems.items.items():
+            if self.file_matches(name):
+                path = item.path
+                run = self.run_number(name)
+                ds_name = self.dataset_name(run)
+                did = RucioDID(path, 
+                            name, 
+                            self.config["scope"], 
+                            ds_name, 
+                            self.config["scope"])
+                did.configure(self.config["register_after_upload"], self.config["upl_rse"])
+                self.dids[scopedItemName(did)] = did
+
+
+    def createDatasets(self):
+        """!
+        Creates Datasets
+        """
+        for did in self.dids.values():
+            sname = scopedName(did.ds_name, did.ds_scope)
+            if sname not in self.datasets:
+                self.datasets[sname] = RucioDataset(did.ds_name, self.config["scope"], [did])
+            self.datasets[sname].dids.append(did)
+
+
+    def createRules(self):
+        """!
+        Creates Rules
+        """
+        for sname, ds in self.datasets.items():
+            self.rules[sname] = RucioRule(self.config["dst_rse"], ds.name, ds.scope)
 
 class RucioClient:
     """!
@@ -753,7 +887,44 @@ class Uploader:
         self.upload_all(20)
         self.stop_log()
 
+# config = {"scope":"user.icaruspro",
+#           "upl_rse":"FNAL_DCACHE", 
+#           "dst_rse":"INFN_CNAF_DISK_TEST",
+#           "ds_name_template":"run-{}-raw",
+#           "filename_run_pattern":r"run_([0-9]{4})_filelist.dat",
+#           "register_after_upload":True}
+
+# config = {"scope":"user.icaruspro",
+#           "upl_rse":"FNAL_DCACHE", 
+#           "dst_rse":"INFN_CNAF_DISK_TEST",
+#           "ds_name_template":"run-{}-calib",
+#           "filename_run_pattern":r"hist.*_run([0-9]{4})_.*.root",
+#           "register_after_upload":True}
+
+# parser = argparse.ArgumentParser(prog="rucio_uploader.py", 
+#                             description='Upload files to RUCIO and create replicas at CNAF')
+                            
+# parser.add_argument('--type', metavar='N', type=int, nargs='+',
+#                     help='an integer for the accumulator')
+
 if __name__ == '__main__':
-    if len(sys.argv) > 1:
-        items = TarItemsConfigurator(TarReader(sys.argv[1:]), config)
-        Uploader(items.dids, items.datasets, items.rules, config).run()
+    if len(sys.argv) > 2:
+        config = {"scope":"user.icaruspro",
+                "upl_rse":"FNAL_DCACHE", 
+                "dst_rse":"INFN_CNAF_DISK_TEST",
+                "register_after_upload":True}
+        if sys.argv[1] == "-t":
+            config["ds_name_template"] = "run-{}-raw"
+            config["filename_run_pattern"] = r"run_([0-9]{4})_filelist.dat"
+            items = TarItemsConfigurator(TarReader(sys.argv[2:]), config)
+        elif sys.argv[1] == "-d":
+            config["ds_name_template"] = "run-{}-calib"
+            config["filename_run_pattern"] = r"hist.*_run([0-9]{4})_.*.root"
+            items = FileItemsConfigurator(DirectoryTreeReader(sys.argv[2:]), config)
+        else:
+            exit(0)
+        
+        Uploader(items.dids, 
+                 items.datasets, 
+                 items.rules, 
+                 config).run()
