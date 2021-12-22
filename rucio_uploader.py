@@ -1,3 +1,4 @@
+#!/usr/bin/python3 -u
 #!/icarus/app/home/icaruspro/rucio_client_py3/bin/python -u
 
 """@package rucio-uploader
@@ -900,7 +901,7 @@ class RucioManager:
         Returns:
             list: list of datasets to be added to RUCIO
         """
-        datasets_to_add = [ds for ds in self.datasets().values() if not ds.in_rucio]
+        datasets_to_add = [ds for ds in self.datasets.values() if not ds.in_rucio]
         self.log_datasets_to_add(datasets_to_add)
         return datasets_to_add
 
@@ -910,17 +911,17 @@ class RucioManager:
         Returns:
             list: list of datasets to be added to RUCIO
         """
-        rules_to_add = [rule for rule in self.rules().values() if not rule.in_rucio]
+        rules_to_add = [rule for rule in self.rules.values() if not rule.in_rucio]
         self.log_rules_to_add(rules_to_add)
         return rules_to_add
     
-    def add_datasets(self):
+    def add_all_datasets(self):
         """Add datasets to RUCIO
         """
         datasets_to_add = self.datasets_to_add()
         self.add_datasets(datasets_to_add)
     
-    def add_rules(self):
+    def add_all_rules(self):
         """Add rules to RUCIO
         """
         rules_to_add = self.rules_to_add()
@@ -969,6 +970,8 @@ class RucioManager:
         self.rucio_info()
         self.log_input()
         self.attach_all()
+        self.add_all_datasets()
+        self.add_all_rules()
         self.upload_all(20)
         self.stop_log()
 
