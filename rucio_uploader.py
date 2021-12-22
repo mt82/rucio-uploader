@@ -81,7 +81,7 @@ def get_scoped_name(name, scope) -> str:
     """
     return "{}:{}".format(scope,name)
 
-def get_scope_item_name(item) -> str:
+def get_scoped_item_name(item) -> str:
     """Return a string in the form: "<scope>:<item name>"
 
     Args:
@@ -398,7 +398,7 @@ class TarItemsConfigurator:
                            ds_name, 
                            self.config["scope"])
             did.configure(self.config["register_after_upload"], self.config["upl_rse"])
-            self.dids[get_scope_item_name(did)] = did
+            self.dids[get_scoped_item_name(did)] = did
 
 
     def createDatasets(self):
@@ -494,7 +494,7 @@ class FileItemsConfigurator:
                             ds_name, 
                             self.config["scope"])
                 did.configure(self.config["register_after_upload"], self.config["upl_rse"])
-                self.dids[get_scope_item_name(did)] = did
+                self.dids[get_scoped_item_name(did)] = did
 
 
     def createDatasets(self):
@@ -614,7 +614,7 @@ class RucioClient:
             items (list): list of items to be attached
         """
         self.log(format_log_message("attaching {} in {}:{}".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach))
-        self.DIDCLIENT.attach_dids(dataset_scope,dataset_name,items)
+        #self.DIDCLIENT.attach_dids(dataset_scope,dataset_name,items)
         self.log(format_log_message("attaching {} in {}:{} .. done".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach))
     
     def rules_in_rucio(self, filter) -> list:
@@ -887,7 +887,7 @@ class RucioManager:
         to_attach = {}
         for v in self.dids.values():
             if v.in_dataset == False and v.in_rucio == True:
-                dn = get_scope_item_name(v)
+                dn = get_scoped_name(v.ds_name, v.ds_scope)
                 if dn not in to_attach:
                     to_attach[dn] = []
                 to_attach[dn].append(v.asAttach)
@@ -958,7 +958,7 @@ class RucioManager:
         dids_to_attach = self.dids_to_attach()
         self.log.write(" ============ attach =========================\n")
         for ds, items in dids_to_attach.items():
-          name, scope = get_scope_and_name(ds)
+          scope, name = get_scope_and_name(ds)
           self.rucio.attach(scope, name, items)
         self.log.write(" =============================================\n\n")
 
