@@ -26,13 +26,6 @@
  8- uploads missing files in parallel threads
 
 """
-
-# remove warning from cryptography not supporting python2 
-import warnings
-
-from upload_all import UPCLIENT
-warnings.filterwarnings("ignore")
-
 import re
 import os
 import sys
