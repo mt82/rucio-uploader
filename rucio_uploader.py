@@ -582,7 +582,13 @@ class RucioClient:
             client.upload(items)
             pass
         except exception.NoFilesUploaded:
-            self.log(format_log_message("uploading {} .. fail".format([x['did_name'] for x in items]), self.upload))
+            self.log(format_log_message("uploading {} .. fail: NoFilesUploaded".format([x['did_name'] for x in items]), self.upload))
+            return False
+        except exception.ServerConnectionException:
+            self.log(format_log_message("uploading {} .. fail: ServerConnectionException".format([x['did_name'] for x in items]), self.upload))
+            return False
+        except exception.DataIdentifierNotFound:
+            self.log(format_log_message("uploading {} .. fail: DataIdentifierNotFound".format([x['did_name'] for x in items]), self.upload))
             return False
         else:
             self.log(format_log_message("uploading {} .. done".format([x['did_name'] for x in items]), self.upload))
@@ -771,7 +777,7 @@ class RucioManager:
         """
         self.log.write(" ============ datasets to add ================\n")
         for ds in datasets:
-            self.log.write("   {}\n".format(ds))
+            self.log.write("   {}\n".format(get_scoped_item_name(ds)))
         self.log.write(" =============================================\n\n")
         self.log.flush()
 
@@ -780,7 +786,7 @@ class RucioManager:
         """
         self.log.write(" ============ rules to add ===================\n")
         for rule in rules:
-            self.log.write("   {}\n".format(rule))
+            self.log.write("   {}\n".format(get_scoped_item_name(rule)))
         self.log.write(" =============================================\n\n")
         self.log.flush()
 
