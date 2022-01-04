@@ -614,7 +614,7 @@ class RucioClient:
             items (list): list of items to be attached
         """
         self.log(format_log_message("attaching {} in {}:{}".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach))
-        #self.DIDCLIENT.attach_dids(dataset_scope,dataset_name,items)
+        self.DIDCLIENT.attach_dids(dataset_scope,dataset_name,items)
         self.log(format_log_message("attaching {} in {}:{} .. done".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach))
     
     def rules_in_rucio(self, filter) -> list:
