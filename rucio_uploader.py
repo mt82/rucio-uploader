@@ -215,6 +215,7 @@ class FileItem:
             path (str): filepath
         """
         self.path = path
+        self.size = os.path.getsize(self.path)
 
 class TarItem:
     """Class to represent a file from tar archive
