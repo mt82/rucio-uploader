@@ -155,6 +155,7 @@ class RucioDID:
         self.asUpload["register_after_upload"] = register_after_upload
         self.asUpload["rse"] = rse
         self.asUpload["upload_ok"] = False
+        self.asUpload["size"] = self.size
     
     def toAttach(self):
         """Prepare DID to be attached to its dataset
@@ -697,22 +698,31 @@ class RucioManager:
         self.dids = dids
         self.datasets = datasets
         self.rules = rules
-        self.up_ok = 0
-        self.up_no = 0
-        self.up_ok_size = 0
-        self.up_no_size = 0
+        self.to_upload = []
     
     def __del__(self):
         """RucioManager destructor
         """
         self.log.close()
     
+    def log_summary(self):
+        up_all = len(self.to_upload)
+        up_ok = sum(map(lambda x : x["upload_ok"] == True, self.to_upload))
+        up_all_size = sum(map(lambda x : x["size"], self.to_upload))
+        up_ok_size = sum(map(lambda x : x["size"], list(filter(lambda x: x["upload_ok"] == True, self.to_upload))))
+        
+        self.log.write(" ============ summary =====================\n")
+        self.log.write("   uploaded files: {} of {}\n".format(up_ok, up_all))
+        self.log.write("   uploaded bytes: {} of {}\n".format(up_ok_size, up_all_size))
+        self.log.write(" =============================================\n\n")
+        self.log.flush()
+    
     def log_dids_input(self):
         """Log
         """
         self.log.write(" ============ input dids =====================\n")
         for v in self.dids.values():
-            self.log.write("   {}, {}, {}, {}, {}, {}, {}\n".format(v.name, v.scope, v.ds_name, v.ds_scope, v.path, v.in_rucio, v.in_dataset))
+            self.log.write("   {}, {}, {}, {}, {}, {}, {}, {}\n".format(v.name, v.scope, v.ds_name, v.ds_scope, v.path, v.in_rucio, v.in_dataset, v.size))
         self.log.write(" =============================================\n\n")
         self.log.flush()
     
@@ -791,13 +801,14 @@ class RucioManager:
         """
         self.log.write(" ============ files to upload ================\n")
         for f in files:
-            self.log.write("   {}, {}, {}, {}, {}, {}, {}\n".format(f['did_scope'], 
+            self.log.write("   {}, {}, {}, {}, {}, {}, {}, {}\n".format(f['did_scope'], 
                                                                   f['did_name'], 
                                                                   f['dataset_scope'],
                                                                   f['dataset_name'],
                                                                   f['rse'],
                                                                   f['register_after_upload'],
-                                                                  f['path']))
+                                                                  f['path'],
+                                                                  f['size']))
         self.log.write(" =============================================\n\n")
         self.log.flush()
 
@@ -965,9 +976,9 @@ class RucioManager:
         for i in range(n_batches):
             batches.append([])
         
-        to_upload = self.dids_to_upload()
-        for i in range(len(to_upload)):
-            batches[i%n_batches].append(to_upload[i])
+        self.to_upload = self.dids_to_upload()
+        for i in range(len(self.to_upload)):
+            batches[i%n_batches].append(self.to_upload[i])
             
         self.log.write(" ============ upload =========================\n")
         threads = []
@@ -980,16 +991,6 @@ class RucioManager:
         for t in threads:
             t.join()
         self.log.write(" =============================================\n\n")
-        
-        self.up_ok = sum(map(lambda x : x["upload_ok"] == True, to_upload))
-        self.up_no = sum(map(lambda x : x["upload_ok"] == False, to_upload))
-        self.up_ok_size = sum(map(lambda x : x["size"], list(filter(lambda x: x["upload_ok"] == True, to_upload))))
-        self.up_no_size = sum(map(lambda x : x["size"], list(filter(lambda x: x["upload_ok"] == False, to_upload))))
-        
-        # print(f"up_ok: {self.up_ok}")
-        # print(f"up_no: {self.up_no}")
-        # print(f"up_ok_size: {self.up_ok_size}")
-        # print(f"up_no_size: {self.up_no_size}")
 
     def attach_all(self):
         """Attach all items 
@@ -1011,6 +1012,7 @@ class RucioManager:
         self.add_all_datasets()
         self.add_all_rules()
         self.upload_all(20)
+        self.log_summary()
         self.stop_log()
 
 parser = argparse.ArgumentParser(prog="rucio_uploader.py", 
