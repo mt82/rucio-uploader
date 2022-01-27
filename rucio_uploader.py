@@ -154,6 +154,7 @@ class RucioDID:
         self.asUpload['dataset_scope'] = self.ds_scope
         self.asUpload["register_after_upload"] = register_after_upload
         self.asUpload["rse"] = rse
+        self.asUpload["upload_ok"] = False
     
     def toAttach(self):
         """Prepare DID to be attached to its dataset
@@ -586,7 +587,7 @@ class RucioClient:
         """
         return [get_scoped_name(x["name"],x["scope"]) for x in list(self.DIDCLIENT.list_content(dataset_scope,dataset_name))]
     
-    def upload(self, items: str, client: UploadClient) -> bool:
+    def upload(self, items: list, client: UploadClient) -> bool:
         """Upload items
 
         Args:
@@ -611,6 +612,8 @@ class RucioClient:
             return False
         else:
             self.log(format_log_message("uploading {} .. done".format([x['did_name'] for x in items]), self.upload))
+            for x in items:
+                x["upload_ok"] = True
             return True
     
     def upload_batch(self, items: list):
@@ -694,6 +697,10 @@ class RucioManager:
         self.dids = dids
         self.datasets = datasets
         self.rules = rules
+        self.up_ok = 0
+        self.up_no = 0
+        self.up_ok_size = 0
+        self.up_no_size = 0
     
     def __del__(self):
         """RucioManager destructor
@@ -973,6 +980,16 @@ class RucioManager:
         for t in threads:
             t.join()
         self.log.write(" =============================================\n\n")
+        
+        self.up_ok = sum(map(lambda x : x["upload_ok"] == True, to_upload))
+        self.up_no = sum(map(lambda x : x["upload_ok"] == False, to_upload))
+        self.up_ok_size = sum(map(lambda x : x["size"], list(filter(lambda x: x["upload_ok"] == True, to_upload))))
+        self.up_no_size = sum(map(lambda x : x["size"], list(filter(lambda x: x["upload_ok"] == False, to_upload))))
+        
+        # print(f"up_ok: {self.up_ok}")
+        # print(f"up_no: {self.up_no}")
+        # print(f"up_ok_size: {self.up_ok_size}")
+        # print(f"up_no_size: {self.up_no_size}")
 
     def attach_all(self):
         """Attach all items 
