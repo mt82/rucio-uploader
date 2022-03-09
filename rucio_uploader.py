@@ -113,6 +113,8 @@ def md5(fname):
     Returns:
         str: checksum of a file
     """
+    if os.path.getsize(fname) == 0:
+        return "0"
     hash_md5 = hashlib.md5()
     with open(fname, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
