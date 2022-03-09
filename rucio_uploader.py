@@ -32,6 +32,7 @@ import os
 import sys
 import tarfile
 import argparse
+import hashlib
 
 from rucio.client.uploadclient import UploadClient
 from rucio.client.didclient import DIDClient
@@ -102,6 +103,21 @@ def sources_exist(sources: list) -> bool:
             print("Error: {} does not exits".format(s))
             return False
     return True
+
+def md5(fname):
+    """Evaluate md5 checksum of a file
+
+    Args:
+        fname (str): path of a file
+
+    Returns:
+        str: checksum of a file
+    """
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 class RucioDID:
     """A RUCIO DID
@@ -274,10 +290,13 @@ class DirectoryTreeReader:
             it = os.path.join(dir, fname)
             if os.path.isfile(it):
                 if fname in self.items:
-                    print("ERROR: items with same filename:")
-                    print(" - {}".format(self.items[fname]))
-                    print(" - {}".format(it))
-                    exit(1)
+                    path1 = self.items[fname].path
+                    path2 = it
+                    if md5(path1) != md5(path2):
+                        print("ERROR: items with same filename:")
+                        print(" - {}".format(self.items[fname].path))
+                        print(" - {}".format(it))
+                        exit(1)
                 self.items[fname] = FileItem(it)
             elif os.path.isdir(it):
                 self.read(it)
