@@ -350,6 +350,7 @@ class TarItemsConfigurator:
         self.dids = {}
         self.datasets = {}
         self.rules = {}
+        self.zero_size_dids = {}
         self.createDIDs(titems)
         self.createDatasets()
         self.createRules()
@@ -432,7 +433,10 @@ class TarItemsConfigurator:
                            ds_name, 
                            self.config["scope"])
             did.configure(self.config["register_after_upload"], self.config["upl_rse"])
-            self.dids[did.get_scoped_name()] = did
+            if did.size == 0:
+                self.zero_size_dids[did.get_scoped_name()] = did
+            else:
+                self.dids[did.get_scoped_name()] = did
 
 
     def createDatasets(self):
@@ -466,6 +470,7 @@ class FileItemsConfigurator:
         self.dids = {}
         self.datasets = {}
         self.rules = {}
+        self.zero_size_dids = {}
         self.createDIDs(fitems)
         self.createDatasets()
         self.createRules()
@@ -528,7 +533,10 @@ class FileItemsConfigurator:
                             ds_name, 
                             self.config["scope"])
                 did.configure(self.config["register_after_upload"], self.config["upl_rse"])
-                self.dids[did.get_scoped_name()] = did
+                if did.size == 0:
+                    self.zero_size_dids[did.get_scoped_name()] = did
+                else:
+                    self.dids[did.get_scoped_name()] = did
 
 
     def createDatasets(self):
