@@ -33,6 +33,7 @@ import sys
 import tarfile
 import argparse
 import hashlib
+import time
 
 from rucio.client.uploadclient import UploadClient
 from rucio.client.didclient import DIDClient
@@ -628,23 +629,32 @@ class RucioClient:
             bool: True if upload is ok, False otherwise
         """
         self.log(format_log_message("uploading {}".format([x['did_name'] for x in items]), self.upload))
+        
+        result = False
+        
+        start = time.time()
+        
         try:
             client.upload(items)
-            pass
         except exception.NoFilesUploaded:
             self.log(format_log_message("uploading {} .. fail: NoFilesUploaded".format([x['did_name'] for x in items]), self.upload))
-            return False
         except exception.ServerConnectionException:
             self.log(format_log_message("uploading {} .. fail: ServerConnectionException".format([x['did_name'] for x in items]), self.upload))
-            return False
         except exception.DataIdentifierNotFound:
             self.log(format_log_message("uploading {} .. fail: DataIdentifierNotFound".format([x['did_name'] for x in items]), self.upload))
-            return False
         else:
             self.log(format_log_message("uploading {} .. done".format([x['did_name'] for x in items]), self.upload))
             for x in items:
                 x["upload_ok"] = True
-            return True
+            result = True
+            
+        
+        stop = time.time()
+        
+        if(stop - start < 60):
+            time.sleep(60.)
+        
+        return result
     
     def upload_batch(self, items: list):
         """Upload a batch of items
