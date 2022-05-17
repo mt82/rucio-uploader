@@ -618,17 +618,18 @@ class RucioClient:
         """
         return [get_scoped_name(x["name"],x["scope"]) for x in list(self.DIDCLIENT.list_content(dataset_scope,dataset_name))]
     
-    def upload(self, items: list, client: UploadClient) -> bool:
+    def upload(self, items: list, client: UploadClient, id: int) -> bool:
         """Upload items
 
         Args:
             items (list): list of items to be uploaded
             client (UploadClient): RUCIO Upload Client
+            id (int): batch id
 
         Returns:
             bool: True if upload is ok, False otherwise
         """
-        self.log(format_log_message("uploading {}".format([x['did_name'] for x in items]), self.upload))
+        self.log(format_log_message("uploading {} - Thread ID: {}".format([x['did_name'] for x in items], id), self.upload))
         
         result = False
         
@@ -637,13 +638,13 @@ class RucioClient:
         try:
             client.upload(items)
         except exception.NoFilesUploaded:
-            self.log(format_log_message("uploading {} .. fail: NoFilesUploaded".format([x['did_name'] for x in items]), self.upload))
+            self.log(format_log_message("uploading {} - Thread ID: {} .. fail: NoFilesUploaded".format([x['did_name'] for x in items], id), self.upload))
         except exception.ServerConnectionException:
-            self.log(format_log_message("uploading {} .. fail: ServerConnectionException".format([x['did_name'] for x in items]), self.upload))
+            self.log(format_log_message("uploading {} - Thread ID: {} .. fail: ServerConnectionException".format([x['did_name'] for x in items], id), self.upload))
         except exception.DataIdentifierNotFound:
-            self.log(format_log_message("uploading {} .. fail: DataIdentifierNotFound".format([x['did_name'] for x in items]), self.upload))
+            self.log(format_log_message("uploading {} - Thread ID: {} .. fail: DataIdentifierNotFound".format([x['did_name'] for x in items], id), self.upload))
         else:
-            self.log(format_log_message("uploading {} .. done".format([x['did_name'] for x in items]), self.upload))
+            self.log(format_log_message("uploading {} - Thread ID: {} .. done".format([x['did_name'] for x in items], id), self.upload))
             for x in items:
                 x["upload_ok"] = True
             result = True
@@ -656,18 +657,19 @@ class RucioClient:
         
         return result
     
-    def upload_batch(self, items: list):
+    def upload_batch(self, items: list, id: int):
         """Upload a batch of items
 
         Args:
             items (list): batch of items
+            id (int): batch id
 
         Returns:
             tuple: list of successfully and failed uploaded items
         """
         UPCLIENT = UploadClient()
         for item in items:
-            if not self.upload([item], UPCLIENT):
+            if not self.upload([item], UPCLIENT, id):
                 UPCLIENT = UploadClient()
     
     def attach(self, dataset_scope: str, dataset_name: str, items: list):
@@ -1022,7 +1024,7 @@ class RucioManager:
         self.log.write(" ============ upload =========================\n")
         threads = []
         for i in range(n_batches):
-            threads.append(Thread(target = self.rucio.upload_batch, args = ([batches[i]])))
+            threads.append(Thread(target = self.rucio.upload_batch, args = ([batches[i],i])))
         
         for t in threads:
             t.start()
