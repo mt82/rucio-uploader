@@ -1,5 +1,7 @@
+import os
 import time
 import logging
+import hashlib
 
 import rucio_uploader.utils as utils
 
@@ -87,6 +89,12 @@ class RucioClient:
         result = False
         
         start = time.time()
+        
+        for item in items:
+            hash = hashlib.md5("{}:{}".format(item['did_scope'],item['did_name']).encode('utf-8')).hexdigest()
+            destination_path="{}/{}/{}/{}.rucio.upload".format(self.config["rse_local_path"],hash[:2],hash[2:4],item["did_name"])
+            if os.path.exists(destination_path):
+                os.remove(destination_path)
         
         try:
             client.upload(items)
