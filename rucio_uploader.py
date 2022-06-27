@@ -97,4 +97,5 @@ if __name__ == '__main__':
                 items.datasets, 
                 items.rules, 
                 config,
+                args,
                 logging_level=logging.INFO).run()

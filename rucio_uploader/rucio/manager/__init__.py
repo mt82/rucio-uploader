@@ -180,7 +180,7 @@ class RucioManager:
     """Manager of the interaction with RUCIO 
     """
   
-    def __init__(self, dids: dict, datasets: dict, rules: dict, config: dict, logging_level=logging.DEBUG):
+    def __init__(self, dids: dict, datasets: dict, rules: dict, config: dict, args: dict, logging_level=logging.DEBUG):
         """RucioManager constructor
 
         Args:
@@ -202,6 +202,7 @@ class RucioManager:
         self.dids = dids
         self.datasets = datasets
         self.rules = rules
+        self.args = args
         self.to_upload = []
     
     def log_summary(self):
@@ -347,6 +348,11 @@ class RucioManager:
         self.logger.info(" ============ run complete ===================")
         self.logger.info(" =============================================")
     
+    def log_arguments(self):
+        """Log
+        """
+        self.logger.info(self.args)
+    
     def add_datasets(self, datasets: list):
         """Add datasets to RUCIO
 
@@ -491,6 +497,7 @@ class RucioManager:
         """Process all items
         """
         self.start_log()
+        self.log_arguments()
         self.rucio_info()
         self.log_input()
         self.attach_all()
