@@ -42,6 +42,7 @@ from rucio.common import exception
 from threading import Thread, Lock
 from datetime import datetime
 from io import TextIOWrapper
+import samweb_client
 
 # lock for cuncurrent writing of log file
 mutex = Lock()
@@ -99,10 +100,11 @@ def sources_exist(sources: list) -> bool:
     Returns:
         bool: True if all sources exist, False otherwise
     """
-    for s in sources:
-        if not os.path.exists(s):
-            print("Error: {} does not exits".format(s))
-            return False
+    if sources is not None:
+        for s in sources:
+            if not os.path.exists(s):
+                print("Error: {} does not exits".format(s))
+                return False
     return True
 
 def md5(fname):
@@ -313,6 +315,35 @@ class DirectoryTreeReader:
         for dir in dirs:
             self.read(dir)
 
+class SamwebReader:
+    """Reader of items from samweb
+    """
+    
+    def __init__(self, run_number: int, data_tier: str, data_stream: str):
+        """SamwebReader constructor
+
+        Args:
+            run_number (int): run number
+            data_tier (str): data tier ['raw', 'reco1', 'reco2', ...]
+            data_stream (str): data stream ['numi', 'bnb', ...]
+        """
+        self.run_number = run_number
+        self.data_tier = data_tier
+        self.data_stream = data_stream
+        self.items = {}
+        self.get_file_locations()
+    
+    def get_file_locations(self):
+        """Retrieve the file locations from samweb
+        """
+        samweb = samweb_client.SAMWebClient(experiment='icarus')
+        file_list = samweb.listFiles(dimensions=f"run_number = {self.run_number} and data_tier = '{self.data_tier}' and data_stream = '{self.data_stream}'")
+
+        nmax = 50
+        for i in range(int(len(file_list)/nmax)+1):
+            location_list = samweb.locateFiles(file_list[i*50:min([len(file_list), (i+1)*50])])
+            for key, value in location_list.items():
+                self.items[key] = FileItem(f"{value[0]['full_path'].replace('enstore:','')}/{key}")
 class TarReader:
     """Reader of items from tar archieve
     """
@@ -541,6 +572,65 @@ class FileItemsConfigurator:
                 else:
                     self.dids[did.get_scoped_name()] = did
 
+
+    def createDatasets(self):
+        """Creates RUCIO Datasets
+        """
+        for did in self.dids.values():
+            sname = get_scoped_name(did.ds_name, did.ds_scope)
+            if sname not in self.datasets:
+                self.datasets[sname] = RucioDataset(did.ds_name, self.config["scope"], [did])
+            self.datasets[sname].dids.append(did)
+
+
+    def createRules(self):
+        """Creates RUCIO rules
+        """
+        for sname, ds in self.datasets.items():
+            self.rules[sname] = RucioRule(self.config["dst_rse"], ds.name, ds.scope)
+
+class SamwebItemsConfigurator:
+    """Configurator of the items from samweb
+    """
+
+    def __init__(self, fitems: list, config: dict):
+        """SamwebItemsConfigurator constructor
+
+        Args:
+            fitems (list): list of files
+            config (dict): configuration
+        """
+        self.config = config
+        self.dids = {}
+        self.datasets = {}
+        self.rules = {}
+        self.zero_size_dids = {}
+        self.createDIDs(fitems)
+        self.createDatasets()
+        self.createRules()
+
+    def dataset_name(self) -> str:
+        """Construct dataset name from run number and data_tier
+
+        Returns:
+            str: RUCIO dataset name
+        """
+        return f"run-{self.config['run_number']}-{self.config['data_tier']}"
+    
+    def createDIDs(self, fitems: list):
+        """Create RUCIO DIDs from files
+
+        Args:
+            fitems (list): list of files
+        """
+        for name, item in fitems.items.items():
+            did = RucioDID(item.path, 
+                        name, 
+                        self.config["scope"], 
+                        self.dataset_name(), 
+                        self.config["scope"])
+            did.configure(self.config["register_after_upload"], self.config["upl_rse"])
+            self.dids[did.get_scoped_name()] = did
 
     def createDatasets(self):
         """Creates RUCIO Datasets
@@ -1061,14 +1151,30 @@ parser = argparse.ArgumentParser(prog="rucio_uploader.py",
                             
 parser.add_argument('--type', 
                     nargs=1,
-                    choices=['dir', 'tar'],
+                    choices=['dir', 'tar', 'sam'],
                     required=True,
-                    help="type of input either directory or list of tar file",
+                    help="type of input either directory, list of tar file or samweb",
                     dest="type")
 
-parser.add_argument('source',
+parser.add_argument('--source',
+                    required='tar' in sys.argv or 'dir' in sys.argv,
                     nargs="+",
                     help="list of sources")
+
+parser.add_argument('--run_number',
+                    nargs=1,
+                    required='sam' in sys.argv,
+                    help="run number")
+
+parser.add_argument('--data_tier',
+                    nargs=1,
+                    required='sam' in sys.argv,
+                    help="data tier ['raw', 'reco1', reco2', ...]")
+
+parser.add_argument('--data_stream',
+                    nargs=1,
+                    required='sam' in sys.argv,
+                    help="data stream ['numi', 'bnb', ...]")
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -1090,6 +1196,11 @@ if __name__ == '__main__':
         config["ds_name_template"] = "run-{}-calib"
         config["filename_run_pattern"] = r"hist.*_run([0-9]{4})_.*.root"
         items = FileItemsConfigurator(DirectoryTreeReader(args.source), config)
+    elif args.type[0] == "sam":
+        config["run_number"] = args.run_number[0]
+        config["data_tier"] = args.data_tier[0]
+        config["data_stream"] = args.data_stream[0]
+        items = SamwebItemsConfigurator(SamwebReader(args.run_number[0], args.data_tier[0], args.data_stream[0]), config)
         
     RucioManager(items.dids, 
                 items.datasets, 
