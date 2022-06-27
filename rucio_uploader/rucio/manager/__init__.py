@@ -1,4 +1,5 @@
 import time
+import logging
 
 import rucio_uploader.utils as utils
 
@@ -16,15 +17,13 @@ mutex = Lock()
 class RucioClient:
     """Wrapper of several RUCIO clients
     """
-    def __init__(self, log_file: TextIOWrapper):
+    def __init__(self):
         """RucioClient constructor
 
-        Args:
-            log_file (TextIOWrapper): log file
         """
         self.DIDCLIENT = DIDClient()
         self.RULECLIENT = RuleClient()
-        self.log_file = log_file
+        self.logger = logging.getLogger()
     
     def log(self, message: str):
         """Log message
@@ -34,8 +33,7 @@ class RucioClient:
         """
         mutex.acquire()
         try:
-            self.log_file.write(message)
-            self.log_file.flush()
+            self.logger.info(message, extra={"instance": "RucioClient"})
         finally:
             mutex.release()
 
@@ -84,23 +82,26 @@ class RucioClient:
         Returns:
             bool: True if upload is ok, False otherwise
         """
-        self.log(utils.format_log_message("uploading {} - Thread ID: {}".format([x['did_name'] for x in items], id), self.upload))
+        self.log("uploading {} - Thread ID: {}".format([x['did_name'] for x in items], id))
         
         result = False
         
         start = time.time()
         
         try:
-            #client.upload(items)
-            pass
-        except exception.NoFilesUploaded:
-            self.log(utils.format_log_message("uploading {} - Thread ID: {} .. fail: NoFilesUploaded".format([x['did_name'] for x in items], id), self.upload))
-        except exception.ServerConnectionException:
-            self.log(utils.format_log_message("uploading {} - Thread ID: {} .. fail: ServerConnectionException".format([x['did_name'] for x in items], id), self.upload))
-        except exception.DataIdentifierNotFound:
-            self.log(utils.format_log_message("uploading {} - Thread ID: {} .. fail: DataIdentifierNotFound".format([x['did_name'] for x in items], id), self.upload))
+            client.upload(items)
+        except exception.NoFilesUploaded as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+        except exception.ServerConnectionException as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+        except exception.DataIdentifierNotFound as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+        except exception.ServiceUnavailable as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+        except exception.RucioException as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
         else:
-            self.log(utils.format_log_message("uploading {} - Thread ID: {} .. done".format([x['did_name'] for x in items], id), self.upload))
+            self.log("uploading {} - Thread ID: {} .. done".format([x['did_name'] for x in items], id))
             for x in items:
                 x["upload_ok"] = True
             result = True
@@ -126,7 +127,7 @@ class RucioClient:
         UPCLIENT = UploadClient()
         for item in items:
             if not self.upload([item], UPCLIENT, id):
-                UPCLIENT = UploadClient()
+                UPCLIENT = UploadClient(logger=self.logger)
     
     def attach(self, dataset_scope: str, dataset_name: str, items: list):
         """Attach items to RUCIO dataset
@@ -136,9 +137,9 @@ class RucioClient:
             dataset_name (str): dataset name
             items (list): list of items to be attached
         """
-        self.log(utils.format_log_message("attaching {} in {}:{}".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach))
+        self.log("attaching {} in {}:{}".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach)
         self.DIDCLIENT.attach_dids(dataset_scope,dataset_name,items)
-        self.log(utils.format_log_message("attaching {} in {}:{} .. done".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach))
+        self.log("attaching {} in {}:{} .. done".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach)
     
     def rules_in_rucio(self, filter: dict) -> list:
         """Get list of rules in RUCIO
@@ -158,9 +159,9 @@ class RucioClient:
             dataset_scope (str): dataset scope
             dataset_name (str): dataset name
         """
-        self.log(utils.format_log_message("adding dataset {}:{}".format(dataset_scope, dataset_name), self.add_dataset))
+        self.log("adding dataset {}:{}".format(dataset_scope, dataset_name), self.add_dataset)
         self.DIDCLIENT.add_dataset(dataset_scope, dataset_name)
-        self.log(utils.format_log_message("adding dataset {}:{} .. done".format(dataset_scope, dataset_name), self.add_dataset))
+        self.log("adding dataset {}:{} .. done".format(dataset_scope, dataset_name), self.add_dataset)
     
     def add_rule(self, dataset_scope: str, dataset_name: str, n_replicas: int, rse: str):
         """Add a rule to RUCIO
@@ -171,15 +172,15 @@ class RucioClient:
             n_replicas (int): number of replicas
             rse (str): RUCIO storage element
         """
-        self.log(utils.format_log_message("adding rule for {}:{} to {}".format(dataset_scope, dataset_name, rse), self.add_rule))
+        self.log("adding rule for {}:{} to {}".format(dataset_scope, dataset_name, rse), self.add_rule)
         self.RULECLIENT.add_replication_rule([{"scope":dataset_scope, "name": dataset_name}], n_replicas, rse)
-        self.log(utils.format_log_message("adding rule for {}:{} to {} .. done".format(dataset_scope, dataset_name, rse), self.add_rule))
+        self.log("adding rule for {}:{} to {} .. done".format(dataset_scope, dataset_name, rse), self.add_rule)
 
 class RucioManager:
     """Manager of the interaction with RUCIO 
     """
   
-    def __init__(self, dids: dict, datasets: dict, rules: dict, config: dict):
+    def __init__(self, dids: dict, datasets: dict, rules: dict, config: dict, logging_level=logging.DEBUG):
         """RucioManager constructor
 
         Args:
@@ -188,8 +189,14 @@ class RucioManager:
             rules (dict): input rules
             config (dict): configuration
         """
-        self.log = open(datetime.now().strftime('uploader_%Y_%m_%d_%H_%M_%S.log'),"w")
-        self.rucio = RucioClient(self.log)
+        #self.log = open(datetime.now().strftime('uploader_%Y_%m_%d_%H_%M_%S.log'),"w")
+        logging.basicConfig(filename=datetime.now().strftime('uploader_%Y_%m_%d_%H_%M_%S.log'),
+                    filemode='a',
+                    format='%(asctime)s,%(msecs)d [%(name)s] [%(levelname)s] : %(message)s',
+                    datefmt='%Y-%m-%d %H:%M:%S',
+                    level=logging_level)
+        self.logger = logging.getLogger()
+        self.rucio = RucioClient()
         self.scope = config["scope"]
         self.rse = config["dst_rse"]
         self.dids = dids
@@ -197,49 +204,40 @@ class RucioManager:
         self.rules = rules
         self.to_upload = []
     
-    def __del__(self):
-        """RucioManager destructor
-        """
-        self.log.close()
-    
     def log_summary(self):
         up_all = len(self.to_upload)
         up_ok = sum(map(lambda x : x["upload_ok"] == True, self.to_upload))
         up_all_size = sum(map(lambda x : x["size"], self.to_upload))
         up_ok_size = sum(map(lambda x : x["size"], list(filter(lambda x: x["upload_ok"] == True, self.to_upload))))
         
-        self.log.write(" ============ summary =====================\n")
-        self.log.write("   uploaded files: {} of {}\n".format(up_ok, up_all))
-        self.log.write("   uploaded bytes: {} of {}\n".format(up_ok_size, up_all_size))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+        self.logger.info(" =============== summary =====================")
+        self.logger.info("   uploaded files: {} of {}".format(up_ok, up_all))
+        self.logger.info("   uploaded bytes: {} of {}".format(up_ok_size, up_all_size))
+        self.logger.info(" =============================================")
     
     def log_dids_input(self):
         """Log
         """
-        self.log.write(" ============ input dids =====================\n")
+        self.logger.debug(" ============ input dids =====================")
         for v in self.dids.values():
-            self.log.write("   {}, {}, {}, {}, {}, {}, {}, {}\n".format(v.name, v.scope, v.ds_name, v.ds_scope, v.path, v.in_rucio, v.in_dataset, v.size))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+            self.logger.debug("   {}, {}, {}, {}, {}, {}, {}, {}".format(v.name, v.scope, v.ds_name, v.ds_scope, v.path, v.in_rucio, v.in_dataset, v.size))
+        self.logger.debug(" =============================================")
     
     def log_datasets_input(self):
         """Log
         """
-        self.log.write(" ============ input datasets =================\n")
+        self.logger.debug(" ============ input datasets =================")
         for v in self.datasets.values():
-            self.log.write("   {}, {}, {}\n".format(v.name, v.scope, v.in_rucio))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+            self.logger.debug("   {}, {}, {}".format(v.name, v.scope, v.in_rucio))
+        self.logger.debug(" =============================================")
     
     def log_rules_input(self):
         """Log
         """
-        self.log.write(" ============ input rules ====================\n")
+        self.logger.debug(" ============ input rules ====================")
         for k,v in self.rules.items():
-            self.log.write("   {}, {}, {}, {}, {}\n".format(v.name, v.scope, v.ncopy, v.rse, v.in_rucio))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+            self.logger.debug("   {}, {}, {}, {}, {}".format(v.name, v.scope, v.ncopy, v.rse, v.in_rucio))
+        self.logger.debug(" =============================================")
     
     def log_input(self):
         """Log inputs
@@ -251,39 +249,35 @@ class RucioManager:
     def log_dids_in_rucio(self, files: list):
         """Log
         """
-        self.log.write(" ============ files in RUCIO =================\n")
+        self.logger.debug(" ============ files in RUCIO =================")
         for f in files:
-            self.log.write("   {}\n".format(f))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+            self.logger.debug("   {}".format(f))
+        self.logger.debug(" =============================================")
 
     def log_dids_in_dataset(self, datasets: dict):
         """Log
         """
-        self.log.write(" ============ files in datasets ==============\n")
+        self.logger.debug(" ============ files in datasets ==============")
         for name, ds in datasets.items():
             for did in ds:
-                self.log.write("   {}, {}\n".format(name,did))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+                self.logger.debug("   {}, {}".format(name,did))
+        self.logger.debug(" =============================================")
 
     def log_rules_in_rucio(self, rules: list):
         """Log
         """
-        self.log.write(" ============ rules in RUCIO =================\n")
+        self.logger.debug(" ============ rules in RUCIO =================")
         for r in rules:
-            self.log.write("   {}\n".format(r))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+            self.logger.debug("   {}".format(r))
+        self.logger.debug(" =============================================")
 
     def log_datasets_in_rucio(self, datasets: list):
         """Log
         """
-        self.log.write(" ============ datasets in RUCIO ==============\n")
+        self.logger.debug(" ============ datasets in RUCIO ==============")
         for ds in datasets:
-            self.log.write("   {}\n".format(ds))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+            self.logger.debug("   {}".format(ds))
+        self.logger.debug(" =============================================")
     
     def log_rucio(self, dids: list, datasets: list, dids_in_dataset: dict, rules: list):
         """Log
@@ -296,9 +290,9 @@ class RucioManager:
     def log_dids_to_upload(self, files: list):
         """Log
         """
-        self.log.write(" ============ files to upload ================\n")
+        self.logger.debug(" ============ files to upload ================")
         for f in files:
-            self.log.write("   {}, {}, {}, {}, {}, {}, {}, {}\n".format(f['did_scope'], 
+            self.logger.debug("   {}, {}, {}, {}, {}, {}, {}, {}".format(f['did_scope'], 
                                                                   f['did_name'], 
                                                                   f['dataset_scope'],
                                                                   f['dataset_name'],
@@ -306,36 +300,32 @@ class RucioManager:
                                                                   f['register_after_upload'],
                                                                   f['path'],
                                                                   f['size']))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+        self.logger.debug(" =============================================")
 
     def log_datasets_to_add(self, datasets: list):
         """Log
         """
-        self.log.write(" ============ datasets to add ================\n")
+        self.logger.debug(" ============ datasets to add ================")
         for ds in datasets:
-            self.log.write("   {}\n".format(ds.get_scoped_name()))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+            self.logger.debug("   {}".format(ds.get_scoped_name()))
+        self.logger.debug(" =============================================")
 
     def log_rules_to_add(self, rules: list):
         """Log
         """
-        self.log.write(" ============ rules to add ===================\n")
+        self.logger.debug(" ============ rules to add ===================")
         for rule in rules:
-            self.log.write("   {}\n".format(rule.get_scoped_name()))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+            self.logger.debug("   {}".format(rule.get_scoped_name()))
+        self.logger.debug(" =============================================")
 
     def log_dids_to_attach(self, datasets: list):
         """Log
         """
-        self.log.write(" ============ files to attach ================\n")
+        self.logger.debug(" ============ files to attach ================")
         for dn, files in datasets.items():
             for f in files:
-                self.log.write("   {}, {}, {}\n".format(dn, f['name'], f['scope']))
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+                self.logger.debug("   {}, {}, {}".format(dn, f['name'], f['scope']))
+        self.logger.debug(" =============================================")
     
     def log_todo(self, dids: list, datasets: list, rules: list):
         """Log
@@ -348,16 +338,14 @@ class RucioManager:
     def start_log(self):
         """Log
         """
-        self.log.write(" ============ run start ======================\n")
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+        self.logger.info(" ============ run start ======================")
+        self.logger.info(" =============================================")
 
     def stop_log(self):
         """Log
         """
-        self.log.write(" ============ run complete ===================\n")
-        self.log.write(" =============================================\n\n")
-        self.log.flush()
+        self.logger.info(" ============ run complete ===================")
+        self.logger.info(" =============================================")
     
     def add_datasets(self, datasets: list):
         """Add datasets to RUCIO
@@ -365,10 +353,10 @@ class RucioManager:
         Args:
             datasets (list): list of datasets to be added
         """
-        self.log.write(" ============ add datasets ===================\n")
+        self.logger.info(" ============ add datasets ===================")
         for ds in datasets:
             self.rucio.add_dataset(ds.scope, ds.name)
-        self.log.write(" =============================================\n\n")
+        self.logger.info(" =============================================")
     
     def add_rules(self, datasets: list):
         """Add rules to RUCIO
@@ -376,10 +364,10 @@ class RucioManager:
         Args:
             datasets (list): list of datasets for which rules are added
         """
-        self.log.write(" ============ add rules ======================\n")
+        self.logger.info(" ============ add rules ======================")
         for ds in datasets:
             self.rucio.add_rule(ds.scope, ds.name, ds.ncopy, ds.rse) 
-        self.log.write(" =============================================\n\n")
+        self.logger.info(" =============================================")
 
     def rucio_info(self):
         """Get info from RUCIO for the input items
@@ -477,7 +465,7 @@ class RucioManager:
         for i in range(len(self.to_upload)):
             batches[i%n_batches].append(self.to_upload[i])
             
-        self.log.write(" ============ upload =========================\n")
+        self.logger.info(" ============ upload =========================")
         threads = []
         for i in range(n_batches):
             threads.append(Thread(target = self.rucio.upload_batch, args = ([batches[i],i])))
@@ -487,17 +475,17 @@ class RucioManager:
 
         for t in threads:
             t.join()
-        self.log.write(" =============================================\n\n")
+        self.logger.info(" =============================================")
 
     def attach_all(self):
         """Attach all items 
         """
         dids_to_attach = self.dids_to_attach()
-        self.log.write(" ============ attach =========================\n")
+        self.logger.info(" ============ attach =========================")
         for ds, items in dids_to_attach.items():
           scope, name = utils.get_scope_and_name(ds)
           self.rucio.attach(scope, name, items)
-        self.log.write(" =============================================\n\n")
+        self.logger.info(" =============================================")
 
     def run(self):
         """Process all items

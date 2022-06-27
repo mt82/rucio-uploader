@@ -27,6 +27,7 @@
  8- uploads missing files in parallel threads
 
 """
+import logging
 import sys
 import argparse
 
@@ -95,4 +96,5 @@ if __name__ == '__main__':
     rucio_manager.RucioManager(items.dids, 
                 items.datasets, 
                 items.rules, 
-                config).run()
+                config,
+                logging_level=logging.INFO).run()
