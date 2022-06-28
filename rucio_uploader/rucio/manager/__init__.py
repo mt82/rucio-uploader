@@ -19,13 +19,14 @@ mutex = Lock()
 class RucioClient:
     """Wrapper of several RUCIO clients
     """
-    def __init__(self):
+    def __init__(self, rse_local_path):
         """RucioClient constructor
 
         """
         self.DIDCLIENT = DIDClient()
         self.RULECLIENT = RuleClient()
         self.logger = logging.getLogger()
+        self.rse_local_path = rse_local_path
     
     def log(self, message: str):
         """Log message
@@ -35,7 +36,7 @@ class RucioClient:
         """
         mutex.acquire()
         try:
-            self.logger.info(message, extra={"instance": "RucioClient"})
+            self.logger.info(message)
         finally:
             mutex.release()
 
@@ -92,10 +93,13 @@ class RucioClient:
         
         for item in items:
             hash = hashlib.md5("{}:{}".format(item['did_scope'],item['did_name']).encode('utf-8')).hexdigest()
-            destination_path="{}/{}/{}/{}.rucio.upload".format(self.config["rse_local_path"],hash[:2],hash[2:4],item["did_name"])
+            destination_path="{}/{}/{}/{}".format(self.rse_local_path,hash[:2],hash[2:4],item["did_name"])
+            temp_destination_path="{}.rucio.upload".format(destination_path)
             if os.path.exists(destination_path):
                 os.remove(destination_path)
-        
+            if os.path.exists(temp_destination_path):
+                os.remove(temp_destination_path)
+
         try:
             client.upload(items)
         except exception.NoFilesUploaded as e:
@@ -145,9 +149,9 @@ class RucioClient:
             dataset_name (str): dataset name
             items (list): list of items to be attached
         """
-        self.log("attaching {} in {}:{}".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach)
+        self.log("attaching {} in {}:{}".format([x['name'] for x in items], dataset_scope, dataset_name))
         self.DIDCLIENT.attach_dids(dataset_scope,dataset_name,items)
-        self.log("attaching {} in {}:{} .. done".format([x['name'] for x in items], dataset_scope, dataset_name), self.attach)
+        self.log("attaching {} in {}:{} .. done".format([x['name'] for x in items], dataset_scope, dataset_name))
     
     def rules_in_rucio(self, filter: dict) -> list:
         """Get list of rules in RUCIO
@@ -167,9 +171,9 @@ class RucioClient:
             dataset_scope (str): dataset scope
             dataset_name (str): dataset name
         """
-        self.log("adding dataset {}:{}".format(dataset_scope, dataset_name), self.add_dataset)
+        self.log("adding dataset {}:{}".format(dataset_scope, dataset_name))
         self.DIDCLIENT.add_dataset(dataset_scope, dataset_name)
-        self.log("adding dataset {}:{} .. done".format(dataset_scope, dataset_name), self.add_dataset)
+        self.log("adding dataset {}:{} .. done".format(dataset_scope, dataset_name))
     
     def add_rule(self, dataset_scope: str, dataset_name: str, n_replicas: int, rse: str):
         """Add a rule to RUCIO
@@ -180,9 +184,9 @@ class RucioClient:
             n_replicas (int): number of replicas
             rse (str): RUCIO storage element
         """
-        self.log("adding rule for {}:{} to {}".format(dataset_scope, dataset_name, rse), self.add_rule)
+        self.log("adding rule for {}:{} to {}".format(dataset_scope, dataset_name, rse))
         self.RULECLIENT.add_replication_rule([{"scope":dataset_scope, "name": dataset_name}], n_replicas, rse)
-        self.log("adding rule for {}:{} to {} .. done".format(dataset_scope, dataset_name, rse), self.add_rule)
+        self.log("adding rule for {}:{} to {} .. done".format(dataset_scope, dataset_name, rse))
 
 class RucioManager:
     """Manager of the interaction with RUCIO 
@@ -204,7 +208,7 @@ class RucioManager:
                     datefmt='%Y-%m-%d %H:%M:%S',
                     level=logging_level)
         self.logger = logging.getLogger()
-        self.rucio = RucioClient()
+        self.rucio = RucioClient(config["rse_local_path"])
         self.scope = config["scope"]
         self.rse = config["dst_rse"]
         self.dids = dids
@@ -367,10 +371,11 @@ class RucioManager:
         Args:
             datasets (list): list of datasets to be added
         """
-        self.logger.info(" ============ add datasets ===================")
-        for ds in datasets:
-            self.rucio.add_dataset(ds.scope, ds.name)
-        self.logger.info(" =============================================")
+        if len(datasets) != 0:
+            self.logger.info(" ============ add datasets ===================")
+            for ds in datasets:
+                self.rucio.add_dataset(ds.scope, ds.name)
+            self.logger.info(" =============================================")
     
     def add_rules(self, datasets: list):
         """Add rules to RUCIO
@@ -378,10 +383,11 @@ class RucioManager:
         Args:
             datasets (list): list of datasets for which rules are added
         """
-        self.logger.info(" ============ add rules ======================")
-        for ds in datasets:
-            self.rucio.add_rule(ds.scope, ds.name, ds.ncopy, ds.rse) 
-        self.logger.info(" =============================================")
+        if len(datasets) != 0:
+            self.logger.info(" ============ add rules ======================")
+            for ds in datasets:
+                self.rucio.add_rule(ds.scope, ds.name, ds.ncopy, ds.rse) 
+            self.logger.info(" =============================================")
 
     def rucio_info(self):
         """Get info from RUCIO for the input items
@@ -471,11 +477,18 @@ class RucioManager:
         Args:
             n_batches (int): number of parallel threads
         """
+        
+        self.to_upload = self.dids_to_upload()
+        
+        if len(self.to_upload) == 0:
+            return
+        
+        self.logger.info(" number of files to upload: {}".format(len(self.to_upload)))
+        
         batches = []
         for i in range(n_batches):
             batches.append([])
         
-        self.to_upload = self.dids_to_upload()
         for i in range(len(self.to_upload)):
             batches[i%n_batches].append(self.to_upload[i])
             
@@ -495,11 +508,12 @@ class RucioManager:
         """Attach all items 
         """
         dids_to_attach = self.dids_to_attach()
-        self.logger.info(" ============ attach =========================")
-        for ds, items in dids_to_attach.items():
-          scope, name = utils.get_scope_and_name(ds)
-          self.rucio.attach(scope, name, items)
-        self.logger.info(" =============================================")
+        if len(dids_to_attach) != 0:
+            self.logger.info(" ============ attach =========================")
+            for ds, items in dids_to_attach.items():
+                scope, name = utils.get_scope_and_name(ds)
+                self.rucio.attach(scope, name, items)
+            self.logger.info(" =============================================")
 
     def run(self):
         """Process all items
