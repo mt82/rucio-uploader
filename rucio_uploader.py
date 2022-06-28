@@ -72,6 +72,7 @@ if __name__ == '__main__':
 
     config = {"scope":"user.icaruspro",
             "upl_rse":"FNAL_DCACHE", 
+            "rse_local_path":"/pnfs/icarus/archive/rucio/user/icaruspro",
             "dst_rse":"INFN_CNAF_DISK_TEST",
             "register_after_upload":True}
     
