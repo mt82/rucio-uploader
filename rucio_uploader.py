@@ -35,6 +35,7 @@ import rucio_uploader.utils as utils
 import rucio_uploader.interfaces.file as file_interface
 import rucio_uploader.interfaces.tar as tar_interface
 import rucio_uploader.interfaces.samweb as sam_interface
+import rucio_uploader.interfaces.log as log_interface
 import rucio_uploader.rucio.manager as rucio_manager
 
 parser = argparse.ArgumentParser(prog="rucio_uploader.py", 
@@ -42,13 +43,13 @@ parser = argparse.ArgumentParser(prog="rucio_uploader.py",
                             
 parser.add_argument('--type', 
                     nargs=1,
-                    choices=['dir', 'tar', 'sam'],
+                    choices=['dir', 'tar', 'sam', 'log'],
                     required=True,
-                    help="type of input either directory, list of tar file or samweb",
+                    help="type of input either directory, list of tar file, samweb or log file",
                     dest="type")
 
 parser.add_argument('--source',
-                    required='tar' in sys.argv or 'dir' in sys.argv,
+                    required='tar' in sys.argv or 'dir' in sys.argv or 'log' in sys.argv,
                     nargs="+",
                     help="list of sources")
 
@@ -93,6 +94,8 @@ if __name__ == '__main__':
         config["data_tier"] = args.data_tier[0]
         config["data_stream"] = args.data_stream[0]
         items = sam_interface.SamwebItemsConfigurator(sam_interface.SamwebReader(args.run_number[0], args.data_tier[0], args.data_stream[0]), config)
+    elif args.type[0] == "log":
+        items = log_interface.RucioLogItemsConfigurator(log_interface.RucioLogReader(args.source), config)
         
     rucio_manager.RucioManager(items.dids, 
                 items.datasets, 
