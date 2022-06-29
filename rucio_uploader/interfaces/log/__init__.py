@@ -22,7 +22,7 @@ class RucioLogReader:
         for log_file in self.log_files:
             f = open(log_file, 'r')
             for l in f.readlines():
-                matches = re.match("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{3} \[root\] \[INFO\] :   _RECOVERY_JSON_STRING_ : (.*)", l)
+                matches = re.match("[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{1,3} \[root\] \[INFO\] :   _RECOVERY_JSON_STRING_ : (.*)", l)
                 if not matches is None:
                     items = json.loads(matches.group(1))
                     for item in items:
