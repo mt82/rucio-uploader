@@ -48,11 +48,11 @@ class TarItemsConfigurator:
     """Configurator of the items from tar archieves
     """
 
-    def __init__(self, titems: list, config: dict):
+    def __init__(self, titems: TarReader, config: dict):
         """TarItemsConfigurator constructor
 
         Args:
-            titems (list): list of items from tar archieve
+            titems (TarReader): TarReader
             config (dict): configuration
         """
         self.config = config
@@ -125,11 +125,11 @@ class TarItemsConfigurator:
         """
         return self.config["ds_name_template"].format(run)
     
-    def createDIDs(self, titems: list):
+    def createDIDs(self, titems: TarReader):
         """Create RUCIO DIDs from tar items
 
         Args:
-            titems (list): list of tar items
+            titems (TarReader): TarReader
         """
         for item in titems.items:
             path = self.filepath(item.s)

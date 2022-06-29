@@ -4,24 +4,12 @@ import json
 import rucio_uploader.utils as utils
 import rucio_uploader.rucio.wrappers as wrapper
 
-class RucioLogItem:
-    """Class to represent a file in filesystem
-    """
-
-    def __init__(self, path: str):
-        """SamReplicaItem constructor
-
-        Args:
-            path (str): filepath
-        """
-        self.path = path
-
 class RucioLogReader:
-    """Reader of items from samweb
+    """Reader of items from log file
     """
     
     def __init__(self, log_files: list):
-        """SamwebReader constructor
+        """RucioLogReader constructor
 
         Args:
             file (list): log file
@@ -40,17 +28,16 @@ class RucioLogReader:
                     for item in items:
                         if item["did_name"] not in self.items:
                             self.items[item["did_name"]] = item
-        
 
 class RucioLogItemsConfigurator:
-    """Configurator of the items from samweb
+    """Configurator of the items from log file
     """
 
-    def __init__(self, fitems: list, config: dict):
-        """SamwebItemsConfigurator constructor
+    def __init__(self, fitems: RucioLogReader, config: dict):
+        """RucioLogItemsConfigurator constructor
 
         Args:
-            fitems (list): list of files
+            fitems (RucioLogReader): RucioLogReader
             config (dict): configuration
         """
         self.config = config
@@ -61,11 +48,11 @@ class RucioLogItemsConfigurator:
         self.createDatasets()
         self.createRules()
     
-    def createDIDs(self, fitems: list):
+    def createDIDs(self, fitems: RucioLogReader):
         """Create RUCIO DIDs from files
 
         Args:
-            fitems (list): list of files
+            fitems (RucioLogReader): RucioLogReader
         """
         for item in fitems.items.values():
             did = wrapper.RucioDID(item['path'], 

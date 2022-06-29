@@ -63,11 +63,11 @@ class FileItemsConfigurator:
     """Configurator of the items from directories
     """
 
-    def __init__(self, fitems: list, config: dict):
+    def __init__(self, fitems: DirectoryTreeReader, config: dict):
         """FileItemsConfigurator constructor
 
         Args:
-            fitems (list): list of files
+            fitems (DirectoryTreeReader): DirectoryTreeReader
             config (dict): configuration
         """
         self.config = config
@@ -120,11 +120,11 @@ class FileItemsConfigurator:
         """
         return self.config["ds_name_template"].format(run)
     
-    def createDIDs(self, fitems: list):
+    def createDIDs(self, fitems: DirectoryTreeReader):
         """Create RUCIO DIDs from files
 
         Args:
-            fitems (list): list of files
+            fitems (DirectoryTreeReader): DirectoryTreeReader
         """
         for name, item in fitems.items.items():
             if self.file_matches(name):

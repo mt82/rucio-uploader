@@ -49,18 +49,17 @@ class SamwebItemsConfigurator:
     """Configurator of the items from samweb
     """
 
-    def __init__(self, fitems: list, config: dict):
+    def __init__(self, fitems: SamwebReader, config: dict):
         """SamwebItemsConfigurator constructor
 
         Args:
-            fitems (list): list of files
+            fitems (SamwebReader): SamwebReader
             config (dict): configuration
         """
         self.config = config
         self.dids = {}
         self.datasets = {}
         self.rules = {}
-        self.zero_size_dids = {}
         self.createDIDs(fitems)
         self.createDatasets()
         self.createRules()
@@ -73,11 +72,11 @@ class SamwebItemsConfigurator:
         """
         return f"run-{self.config['run_number']}-{self.config['data_tier']}"
     
-    def createDIDs(self, fitems: list):
+    def createDIDs(self, fitems: SamwebReader):
         """Create RUCIO DIDs from files
 
         Args:
-            fitems (list): list of files
+            fitems (SamwebReader): SamwebReader
         """
         for name, item in fitems.items.items():
             did = wrapper.RucioDID(item.path, 
