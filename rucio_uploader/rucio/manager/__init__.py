@@ -112,6 +112,10 @@ class RucioClient:
             self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
         except exception.RucioException as e:
             self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+        except exception.RSEOperationNotSupported as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+        except exception.SourceNotFound as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
         else:
             self.log("uploading {} - Thread ID: {} .. done".format([x['did_name'] for x in items], id))
             for x in items:
