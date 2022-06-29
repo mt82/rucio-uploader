@@ -2,6 +2,7 @@ import os
 import time
 import logging
 import hashlib
+import json
 
 import rucio_uploader.utils as utils
 
@@ -11,7 +12,7 @@ from rucio.client.ruleclient import RuleClient
 from rucio.common import exception
 from threading import Thread, Lock
 from datetime import datetime
-from io import TextIOWrapper
+from requests.exceptions import ConnectionError
 
 # lock for cuncurrent writing of log file
 mutex = Lock()
@@ -111,6 +112,14 @@ class RucioClient:
         except exception.ServiceUnavailable as e:
             self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
         except exception.RucioException as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+        except exception.RSEOperationNotSupported as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+        except exception.SourceNotFound as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+        except exception.FileReplicaAlreadyExists as e:
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+        except ConnectionError as e:
             self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
         else:
             self.log("uploading {} - Thread ID: {} .. done".format([x['did_name'] for x in items], id))
@@ -217,16 +226,24 @@ class RucioManager:
         self.args = args
         self.to_upload = []
     
+    def log_recovery(self, up_no):
+        self.logger.info(" =============== recovery =====================")
+        self.logger.info("  _RECOVERY_JSON_STRING_ : {}".format(json.dumps(up_no)))
+        self.logger.info(" =============================================")
+    
     def log_summary(self):
-        up_all = len(self.to_upload)
-        up_ok = sum(map(lambda x : x["upload_ok"] == True, self.to_upload))
+        up_ok = [x for x in self.to_upload if x["upload_ok"] == True]
+        up_no = [x for x in self.to_upload if x["upload_ok"] != True]
         up_all_size = sum(map(lambda x : x["size"], self.to_upload))
-        up_ok_size = sum(map(lambda x : x["size"], list(filter(lambda x: x["upload_ok"] == True, self.to_upload))))
+        up_ok_size = sum(map(lambda x : x["size"], up_ok))
         
         self.logger.info(" =============== summary =====================")
-        self.logger.info("   uploaded files: {} of {}".format(up_ok, up_all))
+        self.logger.info("   uploaded files: {} of {}".format(len(up_ok), len(self.to_upload)))
         self.logger.info("   uploaded bytes: {} of {}".format(up_ok_size, up_all_size))
         self.logger.info(" =============================================")
+    
+        if len(up_no) != 0:
+            self.log_recovery(up_no)
     
     def log_dids_input(self):
         """Log
@@ -363,7 +380,10 @@ class RucioManager:
     def log_arguments(self):
         """Log
         """
-        self.logger.info(self.args)
+        self.logger.info(" ============ input arguments=================")
+        for key,value in vars(self.args).items():
+            self.logger.info("  {}: {}".format(key,value))
+        self.logger.info(" =============================================")
     
     def add_datasets(self, datasets: list):
         """Add datasets to RUCIO
