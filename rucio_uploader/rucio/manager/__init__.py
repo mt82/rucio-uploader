@@ -75,56 +75,64 @@ class RucioClient:
         """
         return [utils.get_scoped_name(x["name"],x["scope"]) for x in list(self.DIDCLIENT.list_content(dataset_scope,dataset_name))]
     
-    def upload(self, items: list, client: UploadClient, id: int) -> bool:
+    def upload(self, item: dict, client: UploadClient, id: int) -> bool:
         """Upload items
 
         Args:
-            items (list): list of items to be uploaded
+            item (dict): item to be uploaded
             client (UploadClient): RUCIO Upload Client
             id (int): batch id
 
         Returns:
             bool: True if upload is ok, False otherwise
         """
-        self.log("uploading {} - Thread ID: {}".format([x['did_name'] for x in items], id))
+        self.log("uploading {} - Thread ID: {}".format(item['did_name'], id))
+        
+        # check if file is on tape
+        where = ""
+        while(where == ""):
+            stream = os.popen('cat {}/\".(get)({})(locality)\"'.format(os.path.dirname(item["path"]),os.path.basename(item["path"])))
+            where = stream.read().strip()
+        if(where == "NEARLINE"):
+            self.log("file {} is on tape -> recall to disk - Thread ID: {}".format(item['did_name'], id))
+            os.popen('timeout 3 cp {} /dev/null'.format(item["path"]))
+            return True
+        
+        # remove possible temporary files
+        hash = hashlib.md5("{}:{}".format(item['did_scope'],item['did_name']).encode('utf-8')).hexdigest()
+        destination_path="{}/{}/{}/{}".format(self.rse_local_path,hash[:2],hash[2:4],item["did_name"])
+        temp_destination_path="{}.rucio.upload".format(destination_path)
+        if os.path.exists(destination_path):
+            os.remove(destination_path)
+        if os.path.exists(temp_destination_path):
+            os.remove(temp_destination_path)
         
         result = False
-        
         start = time.time()
-        
-        for item in items:
-            hash = hashlib.md5("{}:{}".format(item['did_scope'],item['did_name']).encode('utf-8')).hexdigest()
-            destination_path="{}/{}/{}/{}".format(self.rse_local_path,hash[:2],hash[2:4],item["did_name"])
-            temp_destination_path="{}.rucio.upload".format(destination_path)
-            if os.path.exists(destination_path):
-                os.remove(destination_path)
-            if os.path.exists(temp_destination_path):
-                os.remove(temp_destination_path)
 
         try:
-            client.upload(items)
+            client.upload([item])
         except exception.NoFilesUploaded as e:
-            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format(item['did_name'], id, e))
         except exception.ServerConnectionException as e:
-            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format(item['did_name'], id, e))
         except exception.DataIdentifierNotFound as e:
-            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format(item['did_name'], id, e))
         except exception.ServiceUnavailable as e:
-            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format(item['did_name'], id, e))
         except exception.RucioException as e:
-            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format(item['did_name'], id, e))
         except exception.RSEOperationNotSupported as e:
-            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format(item['did_name'], id, e))
         except exception.SourceNotFound as e:
-            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format(item['did_name'], id, e))
         except exception.FileReplicaAlreadyExists as e:
-            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format(item['did_name'], id, e))
         except ConnectionError as e:
-            self.log("uploading {} - Thread ID: {} .. fail: {}".format([x['did_name'] for x in items], id, e))
+            self.log("uploading {} - Thread ID: {} .. fail: {}".format(item['did_name'], id, e))
         else:
-            self.log("uploading {} - Thread ID: {} .. done".format([x['did_name'] for x in items], id))
-            for x in items:
-                x["upload_ok"] = True
+            self.log("uploading {} - Thread ID: {} .. done".format(item['did_name'], id))
+            item["upload_ok"] = True
             result = True
             
         
@@ -147,7 +155,7 @@ class RucioClient:
         """
         UPCLIENT = UploadClient()
         for item in items:
-            if not self.upload([item], UPCLIENT, id):
+            if not self.upload(item, UPCLIENT, id):
                 UPCLIENT = UploadClient(logger=self.logger)
     
     def attach(self, dataset_scope: str, dataset_name: str, items: list):
