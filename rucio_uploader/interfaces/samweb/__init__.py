@@ -19,31 +19,39 @@ class SamwebReader:
     """Reader of items from samweb
     """
     
-    def __init__(self, run_number: int, data_tier: str, data_stream: str):
+    def __init__(self, run_number: list, data_tier: list, data_stream: list):
         """SamwebReader constructor
 
         Args:
-            run_number (int): run number
-            data_tier (str): data tier ['raw', 'reco1', 'reco2', ...]
-            data_stream (str): data stream ['numi', 'bnb', ...]
+            run_number (list): run number
+            data_tier (list): data tier ['raw', 'reco1', 'reco2', ...]
+            data_stream (list): data stream ['numi', 'bnb', ...]
         """
         self.run_number = run_number
         self.data_tier = data_tier
         self.data_stream = data_stream
-        self.items = {}
+        self.items = []
         self.get_file_locations()
     
     def get_file_locations(self):
         """Retrieve the file locations from samweb
         """
         samweb = samweb_client.SAMWebClient(experiment='icarus')
-        file_list = samweb.listFiles(dimensions=f"run_number = {self.run_number} and data_tier = '{self.data_tier}' and data_stream = '{self.data_stream}'")
+        for r in self.run_number:
+            for t in self.data_tier:
+                items = {}
+                for s in self.data_stream:
+                    file_list = samweb.listFiles(dimensions=f"run_number = {r} and data_tier = '{t}' and data_stream = '{s}'")
 
-        nmax = 50
-        for i in range(int(len(file_list)/nmax)+1):
-            location_list = samweb.locateFiles(file_list[i*50:min([len(file_list), (i+1)*50])])
-            for key, value in location_list.items():
-                self.items[key] = SamReplicaItem(f"{value[0]['full_path'].replace('enstore:','')}/{key}")
+                    nmax = 50
+                    for i in range(int(len(file_list)/nmax)+1):
+                        location_list = samweb.locateFiles(file_list[i*50:min([len(file_list), (i+1)*50])])
+                        for key, value in location_list.items():
+                            items[key] = SamReplicaItem(f"{value[0]['full_path'].replace('enstore:','')}/{key}")
+                
+                self.items.append({"run_number": r,
+                                   "data_tier": t,
+                                   "items": items})
 
 class SamwebItemsConfigurator:
     """Configurator of the items from samweb
@@ -64,13 +72,13 @@ class SamwebItemsConfigurator:
         self.createDatasets()
         self.createRules()
 
-    def dataset_name(self) -> str:
+    def dataset_name(self, run_number, data_tier) -> str:
         """Construct dataset name from run number and data_tier
 
         Returns:
             str: RUCIO dataset name
         """
-        return f"run-{self.config['run_number']}-{self.config['data_tier']}"
+        return f"run-{run_number}-{data_tier}"
     
     def createDIDs(self, fitems: SamwebReader):
         """Create RUCIO DIDs from files
@@ -78,14 +86,15 @@ class SamwebItemsConfigurator:
         Args:
             fitems (SamwebReader): SamwebReader
         """
-        for name, item in fitems.items.items():
-            did = wrapper.RucioDID(item.path, 
-                        name, 
-                        self.config["scope"], 
-                        self.dataset_name(), 
-                        self.config["scope"])
-            did.configure(self.config["register_after_upload"], self.config["upl_rse"])
-            self.dids[did.get_scoped_name()] = did
+        for el in fitems.items:
+            for name, item in el["items"].items():
+                did = wrapper.RucioDID(item.path, 
+                            name, 
+                            self.config["scope"], 
+                            self.dataset_name(el["run_number"],el["data_tier"]), 
+                            self.config["scope"])
+                did.configure(self.config["register_after_upload"], self.config["upl_rse"])
+                self.dids[did.get_scoped_name()] = did
 
     def createDatasets(self):
         """Creates RUCIO Datasets

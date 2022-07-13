@@ -54,17 +54,17 @@ parser.add_argument('--source',
                     help="list of sources")
 
 parser.add_argument('--run_number',
-                    nargs=1,
+                    nargs="+",
                     required='sam' in sys.argv,
                     help="run number")
 
 parser.add_argument('--data_tier',
-                    nargs=1,
+                    nargs="+",
                     required='sam' in sys.argv,
                     help="data tier ['raw', 'reco1', reco2', ...]")
 
 parser.add_argument('--data_stream',
-                    nargs=1,
+                    nargs="+",
                     required='sam' in sys.argv,
                     help="data stream ['numi', 'bnb', ...]")
 
@@ -90,10 +90,7 @@ if __name__ == '__main__':
         config["filename_run_pattern"] = r"hist.*_run([0-9]{4})_.*.root"
         items = file_interface.FileItemsConfigurator(file_interface.DirectoryTreeReader(args.source), config)
     elif args.type[0] == "sam":
-        config["run_number"] = args.run_number[0]
-        config["data_tier"] = args.data_tier[0]
-        config["data_stream"] = args.data_stream[0]
-        items = sam_interface.SamwebItemsConfigurator(sam_interface.SamwebReader(args.run_number[0], args.data_tier[0], args.data_stream[0]), config)
+        items = sam_interface.SamwebItemsConfigurator(sam_interface.SamwebReader(args.run_number, args.data_tier, args.data_stream), config)
     elif args.type[0] == "log":
         items = log_interface.RucioLogItemsConfigurator(log_interface.RucioLogReader(args.source), config)
         
