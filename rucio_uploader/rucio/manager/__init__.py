@@ -219,7 +219,8 @@ class RucioManager:
             config (dict): configuration
         """
         #self.log = open(datetime.now().strftime('uploader_%Y_%m_%d_%H_%M_%S.log'),"w")
-        logging.basicConfig(filename=datetime.now().strftime('uploader_%Y_%m_%d_%H_%M_%S.log'),
+        log_filename=datetime.now().strftime('uploader_%Y_%m_%d_%H_%M_%S.log')
+        logging.basicConfig(filename=log_filename,
                     filemode='a',
                     format='%(asctime)s,%(msecs)d [%(name)s] [%(levelname)s] : %(message)s',
                     datefmt='%Y-%m-%d %H:%M:%S',
@@ -233,6 +234,7 @@ class RucioManager:
         self.rules = rules
         self.args = args
         self.to_upload = []
+        print(f"log: {log_filename}")
     
     def log_recovery(self, up_no):
         self.logger.info(" =============== recovery =====================")
