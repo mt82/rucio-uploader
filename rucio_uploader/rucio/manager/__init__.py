@@ -94,7 +94,7 @@ class RucioClient:
         while(where == ""):
             # stream = os.popen('cat {}/\".(get)({})(locality)\"'.format(os.path.dirname(item["path"]),os.path.basename(item["path"])))
             # where = stream.read().strip()
-            proc = subprocess.run('cat {}/\".(get)({})(locality)\"'.format(os.path.dirname(item["path"]),os.path.basename(item["path"])), shell=True, stdout=subprocess.PIPE, bufsize=-1, timeout=10)
+            proc = subprocess.run('cat {}/\".(get)({})(locality)\"'.format(os.path.dirname(item["path"]),os.path.basename(item["path"])), shell=True, stdout=subprocess.PIPE, bufsize=-1, timeout=60)
             where = proc.stdout.decode().strip()
         if(where == "NEARLINE"):
             self.log("file {} is on tape -> recall to disk - Thread ID: {}".format(item['did_name'], id))
