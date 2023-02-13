@@ -3,6 +3,7 @@ import time
 import logging
 import hashlib
 import json
+import subprocess
 
 import rucio_uploader.utils as utils
 
@@ -50,7 +51,7 @@ class RucioClient:
         Returns:
             list: list of DIDs in RUCIO within the scope
         """
-        return [utils.get_scoped_name(name, scope) for name in list(self.DIDCLIENT.list_dids(scope,{},type="file"))]
+        return [utils.get_scoped_name(name, scope) for name in list(self.DIDCLIENT.list_dids(scope,{},did_type="file"))]
     
     def dataset_in_rucio(self, scope: str) -> list:
         """Get list of datasets in RUCIO within the scope
@@ -61,7 +62,7 @@ class RucioClient:
         Returns:
             list: list of datasets in RUCIO within the scope
         """
-        return [utils.get_scoped_name(name, scope) for name in list(self.DIDCLIENT.list_dids(scope,{},type="dataset"))]
+        return [utils.get_scoped_name(name, scope) for name in list(self.DIDCLIENT.list_dids(scope,{},did_type="dataset"))]
 
     def dids_in_dataset(self, dataset_scope: str, dataset_name: str) -> list:
         """Get list of DIDs within a dataset
@@ -87,17 +88,19 @@ class RucioClient:
             bool: True if upload is ok, False otherwise
         """
         self.log("uploading {} - Thread ID: {}".format(item['did_name'], id))
-        
+
         # check if file is on tape
         where = ""
         while(where == ""):
-            stream = os.popen('cat {}/\".(get)({})(locality)\"'.format(os.path.dirname(item["path"]),os.path.basename(item["path"])))
-            where = stream.read().strip()
+            # stream = os.popen('cat {}/\".(get)({})(locality)\"'.format(os.path.dirname(item["path"]),os.path.basename(item["path"])))
+            # where = stream.read().strip()
+            proc = subprocess.run('cat {}/\".(get)({})(locality)\"'.format(os.path.dirname(item["path"]),os.path.basename(item["path"])), shell=True, stdout=subprocess.PIPE, bufsize=-1, timeout=10)
+            where = proc.stdout.decode().strip()
         if(where == "NEARLINE"):
             self.log("file {} is on tape -> recall to disk - Thread ID: {}".format(item['did_name'], id))
             os.popen('timeout 3 cp {} /dev/null'.format(item["path"]))
             return True
-        
+
         # remove possible temporary files
         hash = hashlib.md5("{}:{}".format(item['did_scope'],item['did_name']).encode('utf-8')).hexdigest()
         destination_path="{}/{}/{}/{}".format(self.rse_local_path,hash[:2],hash[2:4],item["did_name"])
@@ -106,7 +109,7 @@ class RucioClient:
             os.remove(destination_path)
         if os.path.exists(temp_destination_path):
             os.remove(temp_destination_path)
-        
+
         result = False
         start = time.time()
 
@@ -134,10 +137,10 @@ class RucioClient:
             self.log("uploading {} - Thread ID: {} .. done".format(item['did_name'], id))
             item["upload_ok"] = True
             result = True
-            
-        
+
+
         stop = time.time()
-        
+
         if(stop - start < 60):
             time.sleep(60.)
         
