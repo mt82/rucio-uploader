@@ -102,7 +102,7 @@ class RucioClient:
             where = proc.stdout.decode().strip()
         if(where == "NEARLINE"):
             self.log("file {} is on tape -> recall to disk - Thread ID: {}".format(item['did_name'], id))
-            os.popen('timeout 3 cp {} /dev/null'.format(item["path"]))
+            os.popen('timeout 3 ifdh cp {} /dev/null'.format(item["path"]))
             return True
 
         # remove possible temporary files
