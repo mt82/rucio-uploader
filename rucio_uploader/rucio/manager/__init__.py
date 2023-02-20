@@ -51,7 +51,11 @@ class RucioClient:
         Returns:
             list: list of DIDs in RUCIO within the scope
         """
-        return [utils.get_scoped_name(name, scope) for name in list(self.DIDCLIENT.list_dids(scope,{},did_type="file"))]
+        try:
+            return [utils.get_scoped_name(name, scope) for name in list(self.DIDCLIENT.list_dids(scope,{},did_type="file"))]
+        except:
+            os.remove("/tmp/icaruspro/.rucio_icaruspro/auth_token_for_account_icaruspro")
+            return self.dids_in_rucio(scope)
     
     def dataset_in_rucio(self, scope: str) -> list:
         """Get list of datasets in RUCIO within the scope
